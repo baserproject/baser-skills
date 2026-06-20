@@ -53,6 +53,7 @@ npx -y skills@latest update php-migration -y
 - ⚠️ **バージョン（tag/commit）を記録しません**（`skills-lock.json` は内容ハッシュのみ）。厳密な版固定が必要な用途には不向き。
 - private repo 対応は公式に未文書化（git 認証があれば動く想定）。
 　
+　
 
 ### 2. APM（Agent Package Manager）
 

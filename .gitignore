@@ -6,9 +6,6 @@ apm_modules/
 apm.lock.yaml
 apm.yml
 
-# Skills.sh dependencies
-skills-lock.json
-
 # APM deployed skills: exclude only this repo's own skills (circular re-install).
 # Other consumed skills under .agents/skills/ remain commit-able.
 /.agents/skills/basercms-plugin-migration/

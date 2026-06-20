@@ -1,6 +1,7 @@
 ---
 name: basercms-core-plugin-convert
 description: baserCMS の「通常プラグイン（サードパーティ／単体配布）」を monorepo の「コアプラグイン」に昇格させる手順。「コアプラグインに変更」「コアプラグイン化」「通常プラグインをコアに昇格」「monorepo に取り込む」等のときに参照する。プラグイン名の規約変更（bc- プレフィックス付与・CamelCase→ハイフン区切り）、.git/シンボリックリンク/standalone テスト基盤の除去、ルート phpunit.xml.dist・tests/bootstrap.php・composer.json・.gitignore への登録、baser-core setting.php の corePlugins/defaultInstallCorePlugins、phpdoc.dist.xml、split_monorepo.yml への追加、monorepo-builder merge による依存集約、全体テストでの実行確認、monorepo split 用 read-only リポジトリの確認までを収録。プラグインのバージョン非推奨対応（5.2→5.3）は basercms-plugin-migration スキル、テスト実行手順は basercms-unittest スキルを参照。
+license: MIT
 ---
 
 # baserCMS 通常プラグイン → コアプラグイン 昇格手順

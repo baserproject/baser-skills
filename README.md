@@ -160,3 +160,9 @@ gh skill publish --tag 1.0.0
 
 - 公開には `skills/<name>/SKILL.md` 構成、frontmatter の `name`/`description`、および repo の **`agent-skills` トピック**（`gh skill publish` が付与）が必要です。
 - `description` に `: `（コロン+空白）を含む場合は frontmatter が不正な YAML になるため、**値全体をクォート**してください。
+
+---
+
+## ライセンス
+
+[MIT License](LICENSE) — Copyright (c) 2010-present, NPO baser foundation。各スキルの frontmatter にも `license: MIT` を記載しています。

@@ -30,10 +30,10 @@ skills.sh、apm、gh skill での導入方法をご紹介します。
 
 ```bash
 # 全体
-npx -y skills@latest add baserproject/baser-skills --skill '*' --agent claude-code -y
+npx -y skills@latest add baserproject/baser-skills --skill '*' -y
 
 # 個別
-npx -y skills@latest add baserproject/baser-skills --skill php-migration --agent claude-code -y
+npx -y skills@latest add baserproject/baser-skills --skill php-migration -y
 ```
 
 **アップデート**:

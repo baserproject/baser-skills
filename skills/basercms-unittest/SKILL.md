@@ -1,6 +1,6 @@
 ---
 name: basercms-unittest
-description: baserCMS（CakePHP5 / PHPUnit）のユニットテストをローカル Docker 環境で実行・調査する手順。「ユニットテストを実行して」「全テストを走らせて」「このテストだけ流して」「テスト失敗を調べて」等のときに参照する。コンテナ名・実行コマンド・権限自動承認のためのコマンド整形・失敗の集計と切り分け方を収録。
+description: baserCMS（CakePHP5 / PHPUnit）のユニットテストをローカル Docker 環境で実行・調査する手順。「ユニットテストを実行して」「全テストを走らせて」「このテストだけ流して」「テスト失敗を調べて」「プラグイン単体でテストを動かしたい」「プラグインにテスト環境を導入したい」等のときに参照する。コンテナ名・実行コマンド・権限自動承認のためのコマンド整形・失敗の集計と切り分け方に加え、プラグイン単体（スタンドアロン）でユニットテストを実行する仕組みの導入手順（composer.json / phpunit.xml.dist / tests/bootstrap.php / TestApp 一式、phinx 0.16.10 ピンの罠）を収録。
 license: MIT
 ---
 
@@ -10,11 +10,11 @@ baserCMS のユニットテストは Docker コンテナ上で実行する。実
 
 ## 実行環境
 
-- 実行は `docker compose`（compose ファイルの場所はローカル環境依存。具体的な配置は `.github/instructions/local.instructions.md` 参照）。
+- 実行は `docker compose`（`/Users/ryuring/Projects/catchup-docker/docker-compose.yml`）。
 - **PHPコンテナ名: `basercms`**、baserCMS 配置先: **`/var/www/html`**。
 - テスト設定: `phpunit.xml.dist`。`<testsuites>` にプラグインごとの testsuite が定義（BaserCore / BcBlog / BcCustomContent / BcMail / BcThemeFile …）。
 - DB はローカル環境依存（過去に `bc-db` ホスト無しの失敗があったが、現在は `cu-db` コンテナを利用。この種の接続失敗は環境要因でスルー可）。
-- **環境固有情報（compose ファイルの場所・コンテナ名・DB ホスト/接続情報・配置パス等）が `local.instructions.md` 等から判断できない場合は、推測で進めずユーザーに確認する。**
+- **実行前に必ずコンテナの稼働を確認する**。PHP コンテナ・DB コンテナが停止（`Exited`）していると `docker exec` が失敗する。`docker ps` で確認し、落ちていれば `docker start <container> <db-container>`、DB は mysqld が接続を受け付けるまで待つ（詳細は後述「事前確認: コンテナの稼働」）。
 
 ## コマンド整形（重要：権限の自動承認）
 
@@ -25,11 +25,9 @@ baserCMS のユニットテストは Docker コンテナ上で実行する。実
 ## 実行コマンド
 
 ### 全テスト（フルスイート）
-出力が大きいのでプロジェクトルートの `.phpunit.log`（`/var/www/html/.phpunit.log`）に保存し、末尾だけ表示する。完走まで約10分強かかるため、必要に応じてバックグラウンド実行する。
-- **ログは毎回空にしてから出力する**（`: > .phpunit.log` で truncate してから `>>` で追記）。前回ログが残っていても確実にリセットされる。
-- `.phpunit.log` は `.gitignore` 済み（コミット対象外）。
+出力が大きいのでコンテナ内のファイルに保存し、末尾だけ表示する。完走まで約10分強かかるため、必要に応じてバックグラウンド実行する。
 ```
-docker exec basercms sh -c 'cd /var/www/html && : > .phpunit.log; vendor/bin/phpunit --no-coverage >> .phpunit.log 2>&1; tail -45 .phpunit.log'
+docker exec basercms sh -c 'cd /var/www/html && vendor/bin/phpunit --no-coverage > /tmp/phpunit_full.log 2>&1; tail -45 /tmp/phpunit_full.log'
 ```
 
 ### 単一ファイル / 単一メソッド
@@ -49,11 +47,11 @@ docker exec basercms sh -c 'cd /var/www/html && php -l plugins/baser-core/src/Co
 1. **致命的か警告か**を判別。`logs/debug.log` の `debug:` は非推奨警告（動作継続）。`logs/error.log` や Fatal/Exception が本当のエラー。デバッグモードでは警告も画面表示され「エラー」に見えるので注意。
 2. **失敗が多いときは根本原因単位で集計**。フルログから例外メッセージを正規化して集計し、systemic な原因（少数の原因が大量の失敗を生む）を先に特定する。
    ```
-   docker exec basercms sh -c 'cd /var/www/html && grep -hoE "[A-Za-z\\\\]+Exception: .{0,80}|[A-Za-z\\\\]+Error: .{0,80}" .phpunit.log | sed -E "s/[0-9]+/N/g" | sort | uniq -c | sort -rn | head -30'
+   docker exec basercms sh -c 'cd /var/www/html && grep -hoE "[A-Za-z\\\\]+Exception: .{0,80}|[A-Za-z\\\\]+Error: .{0,80}" /tmp/phpunit_full.log | sed -E "s/[0-9]+/N/g" | sort | uniq -c | sort -rn | head -30'
    ```
    テストクラス単位の集計:
    ```
-   docker exec basercms sh -c 'cd /var/www/html && grep -hoE "^[0-9]+\) [A-Za-z0-9_\\\\]+Test::" .phpunit.log | sort | uniq -c | sort -rn | head -40'
+   docker exec basercms sh -c 'cd /var/www/html && grep -hoE "^[0-9]+\) [A-Za-z0-9_\\\\]+Test::" /tmp/phpunit_full.log | sort | uniq -c | sort -rn | head -40'
    ```
 3. **アプリ src 起因か、テスト/環境/fixture/i18n 起因かを切り分ける**。
    - `git diff HEAD -- <file>` … 当該ファイルが自分の変更対象か。
@@ -61,36 +59,39 @@ docker exec basercms sh -c 'cd /var/www/html && php -l plugins/baser-core/src/Co
    - **クリーンな baseline は作りにくい**点に注意：フレームワークを上げた後は vendor が入れ替わっているため、単純な `git stash` では移行前の状態を再現できない。
 4. **修正 → lint → `--filter` で単体確認 → 全テスト再実行**で件数の改善と新規回帰を確認する。
 
-## フルスイートの落とし穴（環境汚染で「大量失敗」に見えるケース）
-
-単体・部分実行は通るのにフルスイートだけ大量に失敗する場合、ほぼ環境汚染。コード起因と誤認しないこと。
-
-### 1. バックグラウンド実行を kill すると phpunit がオーファン化 → 並行実行で全滅（最重要）
-`docker exec ... phpunit` をバックグラウンドにして**タスクを停止しても、コンテナ内の phpunit プロセスは生き残る**。再実行すると**複数 phpunit が同じ test DB を奪い合い**、互いの fixture を truncate/再構築して**双方が大量 error**になる。
-- 兆候: ログの進捗カウンタが**重複・交錯**する（例: `61/4442` と `122/4442` が交互に出る／`/ 4442` の行数が想定以上）。
-- 必ず確認: `docker exec basercms sh -c 'ps aux | grep -c "[p]hpunit"'`（0 でないなら停止する）。
-- 停止: `docker exec basercms sh -c 'pkill -f phpunit'`（`sleep` を付けると権限プロンプト/タイムアウトになりやすいので単体で）。
-- 原則: フルスイートは**単一プロセスで完走させ、途中で kill しない**。kill した時は必ずオーファンを掃除してから再実行する。
-
-### 2. 破壊的テストが共有 test DB / vendor / 実ファイルを汚す
-`BcComposerTest`（実 composer を実行し composer.json/lock・vendor を書き換え）、移行テスト（一時マイグレーション `*_TestMigration.php` を生成）等は環境を汚し、**残骸が次回 bootstrap を壊す**。
-- **`TestMigration.php` の version 重複** → bootstrap の `Migrator` が `Duplicate migration ... has the same version` で起動失敗 → スキーマ未構築 → 全テストが `Base table or view not found: ... .sites` で連鎖 error。掃除: `ls plugins/*/config/Migrations/*TestMigration*` を確認し残骸を削除。
-- **vendor が CakePHP 5.0 系にダウングレードされたまま残る** → `__d()` が旧 I18n の `_cake_core_` キャッシュ設定を参照し `cache configuration does not exist`。復旧: `git checkout -- composer.json composer.lock && composer install`。
-- **実ファイルの dirty/残骸**: `composer.lock`・`plugins/*/VERSION.txt`・`webroot/files/contents/*`（例 `baser.power.gif`）が残ると、関連テストが「ファイルが消えていない」等で失敗。掃除: `git checkout -- composer.lock plugins/baser-core/VERSION.txt ...` と残骸ファイル削除。
-- スキーマが壊れたかの確認: test DB のテーブル数を見る（健全時は数十テーブル。`test_suite_light_dirty_tables` だけ等なら未構築）。`Migrator` は次回 phpunit 実行時の bootstrap で再構築するので、**残骸を消してから**小さなテストを1本流せば復旧する。
-
-### 3. CakePHP の `ErrorTrap` が握った警告は PHPUnit のサマリに出ない
-PHP の E_WARNING/E_NOTICE 等が `Cake\Error\ErrorTrap->handleError()` で捕捉されると、**PHPUnit の `Warnings:` 件数には計上されず**、標準出力（=ログ）に `warning: 2 :: ...` として出るだけ。`--display-warnings` でも拾えないことがある。
-- 警告を洗うときは**サマリだけでなくログ本文を grep** する: `grep -nE "warning: [0-9]+ ::|on null|Deprecated" .phpunit.log`。
-- 例: `Attempt to read property "X" on null`（null 参照）はサービスの `->get()->prop` 等で頻出。null 安全化で解消する。
-
-
 ## プラグイン単体（スタンドアロン）でのテスト実行環境の導入
 
 フルスイート（上記 `basercms` コンテナ）とは別に、**1プラグインだけを独立してテストできる**仕組み。4→5 移行中のプラグインを TDD で進めるのに有効（移植したテストが Table/Service 5系化の検証になる）。
 
 - **実行コンテナはアプリ側**（例: `catchup-portal`、配置先 `/var/www/html/v5`）。DB ホスト（例 `cu-db`）は Docker ネットワーク内でしか解決できないため、**phpunit はコンテナ内で実行**する（ホスト直叩きは接続不可）。
 - プラグインは自前の `composer.json` / `vendor/` を持ち、baser-core を dev 依存として取り込む。
+
+### tests/bootstrap.php と TestApp はどこから入手するか（重要）
+
+`composer.json` / `phpunit.xml.dist` は本書の記述から手で起こせるが、**`tests/bootstrap.php` と `tests/TestApp/` 一式（app.php / app_local.php / bootstrap.php / paths.php / plugins.php / routes.php / src/Application.php / src/Controller/AppController.php）は中身が定型で量が多く、ゼロから書き起こすものではない**。これらは **baserCMS 公式の `baserproject/bc-bake` プラグインのプラグイン雛形生成コマンドに含まれている**。
+
+- リポジトリ: https://github.com/baserproject/BcBake
+- 手順（**人手の準備が必要**）: `composer require --dev baserproject/bc-bake` で導入 → **管理画面にログインして有効化**（または `plugins` テーブルに `name='BcBake', status=1` を直接投入。bc-bake は独自テーブル・install migration を持たない開発ツールなので直書きでも実用上足りる）→ 雛形生成コマンドを実行:
+  ```
+  bin/cake bake bc_plugin {PluginName}
+  ```
+  これは CakePHP 標準の `bake plugin` が作るファイルに加え、baserCMS 用のテスト基盤（`tests/bootstrap.php` ＋ `TestApp` 一式）等を生成する。
+  （MVC一式は `bin/cake bake bc_all {table_name} -p {PluginName} --prefix Admin`。）
+- bc-bake 経由は **composer導入＋有効化という人手の前提**が要る（エージェント単独では完結しにくいので、この準備はユーザーに依頼する）。有効化は管理画面ログイン、または `plugins` テーブルへ直接 `INSERT (name,title,version,status,db_init,priority,created,modified) VALUES ('BcBake','BcBake','1.2.1',1,1,100,NOW(),NOW())`。有効化すると `bin/cake bake --help` に `bc_plugin` / `bc_all` が現れる。
+
+#### ★既存プラグインへ後付けする手順（検証済み）
+
+`bake bc_plugin {Name}` は **「登録済み（ロード済み）プラグイン名」で存在チェック**するため、既存プラグイン名では `Plugin: {Name} already exists, no action taken` で弾かれる（**パス選択で vendor 側を選んでも同じ**＝チェックはディレクトリでなく解決済みプラグインパス基準）。そこで:
+
+1. 既存プラグイン本体を一時リネームして退避（例 `plugins/Cpm` → `plugins/Cpm2`）。これで "Cpm" 名が未登録扱いになる。**plugins テーブルで status=0 に落とす必要はない**（ディレクトリ退避だけで未登録扱いになり、active プラグインが一時的に dir 欠落でも bake の bootstrap は許容される＝検証済み）。
+2. `bin/cake bake bc_plugin Cpm`（パスは `1`＝`plugins/`、確認は `y`）。**正しい "Cpm" 名**で雛形が生成される。対話は `(echo 1; yes y) | ...` で流す。`| head` 等で**パイプを途中で閉じると SIGPIPE で生成が中断**するので、出力はファイルへリダイレクトして完走させる。
+   - ハングしたら（対話待ちで停止）`pkill -f 'cake bake'` で止め、生成途中の plugin ディレクトリを `rm -rf` してからリトライする。
+3. 生成された `plugins/Cpm/tests/bootstrap.php` と `plugins/Cpm/tests/TestApp/` を、退避した本体 `plugins/Cpm2/tests/` へ**移動**する（bootstrap.php と TestApp のみ。後述）。
+4. `TestApp/config/install.php` は **汎用値（host=127.0.0.1 / database=basercms,test_basercms）で生成される**ので、プロジェクトのDB（例 host=cu-db / database=catchup_portal_v5・test_catchup_portal_v5 / user=catchup）へ**必ず編集**する。
+5. 生成側 `plugins/Cpm` を削除し、本体を戻す（`plugins/Cpm2` → `plugins/Cpm`）。
+6. `vendor/bin/phpunit` で緑を確認。
+
+**移すのは `tests/bootstrap.php` と `tests/TestApp/` だけ**にする。`bake bc_plugin` は `composer.json` / `phpunit.xml.dist` も生成するが、**`composer.json` は `name` がプレースホルダ・baser-core 版が違う・phinx ピンが無い**等で再生成されるため、本体側の自前 `composer.json`（phinx 0.16.10 ピン入り）を**上書きしないこと**。`phpunit.xml.dist` も既に自前があれば流用元の testsuite 名残骸（例 `CuMcp`）に注意。
 
 ### 必要なファイル一式（プラグイン直下）
 

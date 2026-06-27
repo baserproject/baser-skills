@@ -56,18 +56,22 @@ license: <SPDX 識別子。例 MIT>
 ## 4. 検証（公開前に必ず）
 
 ```bash
-# 検証用の残存コピーを先に掃除（重要）
-rm -rf .claude/skills .agents apm_modules apm.yml apm.lock.yaml skills-lock.json
+# 外部由来のインストールキャッシュ・lockfile だけ掃除（git 未追跡の残存物）
+rm -rf apm_modules apm.yml apm.lock.yaml skills-lock.json
 
 # frontmatter / 仕様チェック（公開はしない）
 gh skill publish --dry-run
 ```
 
-- ⚠️ `.agents/` `.claude/skills/` `apm_modules/` に過去のインストールコピーが残っていると、
-  `gh skill publish` がそれらも走査して**古い内容で誤った warning/error** を出す。先に必ず消す。
-- ただしリポジトリ内部用スキル（`.claude/skills/` に意図的に置いた非公開スキル）を残したい場合は、
-  消す前に退避するか、対象だけ個別に削除する。
-- `error` がゼロなら OK。`warning`（description 字数 / secret scanning / tag protection）は非ブロッカー。
+- ⚠️ `apm_modules/` などインストールキャッシュ（git 未追跡）が残っていると、
+  `gh skill publish` が古い内容を拾って**誤った warning/error** を出す。先に消す。
+- ℹ️ **`.agents/`（と `.claude/skills/`）は、このリポジトリ内で利用するドッグフード用スキルであり、
+  共有対象（`skills/<name>/`）ではない。** `gh skill publish` 実行時、`.agents/` に他のスキルが入っていると
+  それらも走査されて warning が出ることがあるが、**共有するスキルではないので無視してよい**（退避・削除は不要）。
+  - 例外: `.agents/` `.claude/skills/` の中身が外部 repo からの古いテストインストールコピー（git 未追跡）の場合は、
+    誤検知防止のため消す。リポジトリが意図的にコミットしているドッグフード用コピーはそのまま残す。
+- `error` がゼロなら OK。`warning`（description 字数 / secret scanning / tag protection / `.agents/` 内ドッグフードスキル）は
+  すべて非ブロッカーなので、そのまま公開してよい。
 
 ## 5. コミット & プッシュ
 

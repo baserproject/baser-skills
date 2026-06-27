@@ -1,17 +1,23 @@
 {
   "version": 1,
   "skills": {
+    "markdown-to-html": {
+      "source": "ecatchup/catchup-skills",
+      "sourceType": "github",
+      "skillPath": "skills/markdown-to-html/SKILL.md",
+      "computedHash": "a58fe91d3f30dd92bc3892958142b163a6626224e03fbff4f43b222b9aaadb64"
+    },
     "plan-builder": {
       "source": "ecatchup/catchup-skills",
       "sourceType": "github",
       "skillPath": "skills/plan-builder/SKILL.md",
-      "computedHash": "e9cf05caef414e29796b41caafe7df8a890e36043ba65777a814360224a70c89"
+      "computedHash": "2c0128761a113d42f726518c9045e1434d3644b8142459877b35317963e6784c"
     },
     "skill-release": {
       "source": "ecatchup/catchup-skills",
       "sourceType": "github",
       "skillPath": "skills/skill-release/SKILL.md",
-      "computedHash": "b6dceddf880706e31f4a46d2398aec3142a2d497437ce4c0a2e4b1bd83cf8c2a"
+      "computedHash": "467d852ccb4615d88aec529d01c4027bc7bd438648df8966604e593fa8035804"
     }
   }
 }

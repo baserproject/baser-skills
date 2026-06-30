@@ -8,7 +8,18 @@ license: MIT
 
 `BcAddonMigrator` でプラグインの雛形を5系へ変換した**後**に必要となる、手作業のコード書き換えパターンを症状別にまとめたもの。サイト全体の移行手順（baserCMS5 のインストール、`BcDbMigrator` でのデータ移行、テーマ変換、プラグインの変換手順＝ZIP化→`bc_addon_migrator`→配置、Git/リポジトリ運用）は **basercms4-to-5-upgrade** スキルを参照。本スキルはそこから呼ばれ、プラグインの Controller / Table / Entity / View / Helper / フォーム / Vue・JS を1画面ずつ通して動かすための具体策を提供する。
 
-## 横断対応の原則（最重要）
+> **推奨: 移行に着手する前に一度 `basercms5-claude-workflow-setup`（環境セットアップ）を参照し、進め方の環境（設計=superpowers brainstorming／権限整理=permissions-audit／その上での Auto mode／spec・plan の Markdown プレビュー）を整える。提案ベースで、整っていればスキップ。下記「移行の進め方」はその環境の上で回す。**
+
+## 移行の進め方（最重要・最初にやる順序）
+プラグインの 4→5 移行は、**画面を1枚ずつ場当たりで直す前に、まず横断で全体を片付ける**のが速くて安全。実証済みの推奨順序:
+1. **全ファイルの状態台帳化**: src/templates/js/migration を1行1ファイルで `未着手/移行中/移行済/見送り/対象外` 管理（種別×状態サマリ付き、生きたドキュメント）。どこが残っているか俯瞰できる。
+2. **★横断コードチェック（静的監査）を最初に**: 全5系コードをアクション/メソッド単位で4系正本と突合し、`移行済 / deferred / 4系残骸 / 未実装` ＋バグ(深刻度)＋ブラウザ確認ポイントを監査ドキュメント化する。**テストを書く前**にやることで、残骸/即Fatal/設計判断が要る箇所を地図化でき手戻りが激減する。並列サブエージェントで種別/ドメイン別に分担すると速い（`basercms-unittest` の横断監査メモ参照）。
+3. **★横断「構文だけ5系化」を次に**: 監査で出た4系残骸を5系構文へ一括変換（`$this->Model->`→fetchTable、`find('first',配列)`→builder、`getDataSource`→getConnection、Event の `bindModel`/`$event->data` 等。下記 C-0/C-A/§8 のカタログを適用）。**完了条件は「php -l 全クリーン＋4系API残骸grepゼロ(deferredのTODO除く)＋既存フルスイート回帰ゼロ」。この段では新規テストを書かない**。Fatal を一掃して「5系構文として成立」の土台を作る。外部依存(Slack/メール/CSV/Excel/集計)は中身を移さず `// TODO baserCMS5移行:` か `NotImplementedException` で deferred 明示。
+4. **テスト＆ブラウザで意味検証**: 構文変換だけでは保証できない **entity↔配列・日付marshal・afterSave連鎖・FormProtection・view変数の形・JS連携(C-F2)** を、描画する統合テスト＋ブラウザ確認で詰めて `移行済` に上げる。`php -l` は構文しか見ず描画/JSの死は捕まらないのでこの段が必須。
+
+> なぜ 2→3 を先にやるか: 構文残骸は「画面は開くが delete/ajax/CSV を押すと500」のように**呼ぶまで顕在化しない**。先に全部洗って構文を5系化しておけば、以後のテスト＆ブラウザは「動くはずの土台の上で意味を確認する」作業に集中でき、Fatal とロジック誤りが混ざらない。
+
+## 横断対応の原則（同一原因の散在は一括で）
 1画面の修正で見つけた不具合のうち、同じ原因がプラグイン全体に散在するものは、その場で**横断的に**一括対応する（1箇所だけ直して次画面で同じエラーに当たる、を繰り返さない）。手順: ①直したら同じパターンを `grep -rn` で全件洗い出す（例: `$this->Form->input(`、`'multiple' => 'checkbox'`、単数 `get('Cpm.Cpm...')`、`searches/`、`Time->format($x)` 第2引数なし 等）→ ②機械的に一意な変換は `perl -pi` で一括適用 → ③変更ファイルを全て `php -l` で検証 → ④非自明な箇所だけ個別対応。横断一括できる代表例は **C-0** にカタログ化（見つけ次第追記）。新しい横断パターンを見つけたら C-0 に追加してから一括実行する。
 
 ## 具体的なコード変換ルール
@@ -135,6 +146,17 @@ license: MIT
 *   **変更**: CakePHP 4 の `FrozenTime` は、CakePHP 5 では `Cake\I18n\DateTime` が推奨されます（または `FrozenTime` も互換性のため残っている場合がありますが、最新の型定義に従うこと）。
 *   **フォーマット**: `i18nFormat()` などのメソッドシグネチャを確認すること。
 
+#### ★[最重要] datePicker の日付が保存されない（datetime カラムが NULL になる）
+症状: 見積の作成日/受注日/請求予定日、請求の billing_date/recorded、入金 due_date、売上 sale_date などが**保存しても消える（NULL）**。原因は2つの組合せ:
+1. **`BcFormHelper::datePicker` はスラッシュ形式(`yy/mm/dd` 例 `2026/06/28`)で送る**（ヘルパが値を `str_replace('-','/')` して表示し、jQuery UI もスラッシュ）。
+2. **CakePHP5 の `DateTimeType::marshal` は「日付のみ(`Y-m-d`)」も NULL にし、`Y-m-d H:i:s` を要求する**。スラッシュ形式はもちろん、ハイフンの日付のみでも NULL になる（実測: `2026/06/28`→NULL、`2026-06-28`→NULL、`2026-06-28 00:00:00`→OK）。
+   - **逆に純 `date` カラム(`DateType`)は「時刻付き」を NULL にする**（`2026-06-28`→OK、`2026-06-28 00:00:00`→NULL）。＝カラム型で要求が真逆。**移行先カラムが date か datetime かを必ず確認**（migration の `SHOW CREATE TABLE`）。
+- **直し方（保存側で正規化。表示はスラッシュのままでよい）**: フォーム→DB 変換（`convertRecordFormToDb` 等、patchEntity の前）で、datetime カラム向けは `'/'→'-'`＋日付のみなら ` 00:00:00` 補完＋空は null、date カラム向けは `'/'→'-'`＋空は null（時刻は付けない）に正規化する。
+  - **DRY 化推奨**: プラグイン共通の Util に集約して各 Table から呼ぶ（実例: `Cpm\Lib\CpmUtil::normalizeDateTime($v)` / `normalizeRecordDateTimes($record, 'Model', ['date_a','date_b'])`）。1画面で気づいたら**同種の datePicker 保存を全フォームへ横展開**（見積/請求/入金/売上/プロジェクト…）。手書きの ` . ' 00:00:00'` 連結も同 Util に寄せる。
+  - 検証は「スラッシュ日付を POST → `assertRedirect`（save 成功）→ 再取得して `->format('Y-m-d')` が一致」の統合テストで固定（`basercms-unittest`）。**既存テストが日付を assert していないと silently NULL を見逃す**ので、日付の値まで assert すること。
+- **編集画面の日付表示（GET）もスラッシュで統一**: 4系互換の `convert*ToFormData`（編集表示用にエンティティを `toArray()` して整形）が日付を `format('Y-m-d')`（ハイフン）で出すと、add 画面（既定値が `date('Y/m/d')` 等スラッシュ）と不一致になる。**表示用も `format('Y/m/d')` に揃える**（保存側の正規化が両形式を受けるので安全）。これも共通 Util に集約（実例 `CpmUtil::formatDateObjectsForForm($cols)`）して見積/請求/入金/経費/工数/商品… 全 `convert*ToFormData` から呼ぶ。
+- **★[最重要・別の罠] `func()->min()/max()/sum()` を datetime カラムに使うと結果が数値型にキャストされ壊れる**: `find()->select(['min_date' => func()->min('billing_date')])` の集計結果は **`2026.0` のような float** になる（集計関数の戻り型が数値既定のため）。これを `datetime` カラム（例 見積 `billing_start_date`）へ代入すると**マーシャリングで NULL** になる（しかも代入元の他経路では再現せず原因究明が難航する）。**datetime の最小/最大が欲しいときは集計関数を使わず `->orderBy(['col' => 'ASC'/'DESC'])->first()` で「最古/最新行」を取り、そのエンティティの日時プロパティ（正しい DateTime 型）を使う**。`func()->sum/count` は数値カラムなら問題ない（数値が欲しいので正しい）。調査時は「DB を生SQLで段階的に読み」どの save 後に NULL 化するかを二分する（`basercms-unittest` の error.log/DB読みデバッグ）。
+
 ### 4. データベース・モデル (`Table`, `Entity`)
 
 *   **構成変更**: `Model` (CakePHP 2) は `Table` と `Entity` (CakePHP 4/5) に分離されました。
@@ -182,14 +204,19 @@ license: MIT
 
 *   **Fixture**: `FixtureManager` (配列定義) は廃止されました。`FixtureFactory` を使用した定義に書き換えてください。
 
-## 8. イベント (`Event`)
+## 8. イベント (`Event`) — リスナー(`src/Event/*EventListener.php`)の4→5（実証済み）
 
-*   **イベントデータの取得**:
-    *   × `$event->data['key']` (配列アクセス)
-    *   ○ `$event->getData('key')` (メソッド経由)
-*   **イベントサブジェクトの取得**:
-    *   × `$event->subject`
-    *   ○ `$event->getSubject()`
+イベントデータ/サブジェクトの基本:
+*   `$event->data['key']` → `$event->getData('key')`、`$event->subject` → `$event->getSubject()`。書き込みは `$event->setData('key', $v)`。
+*   **`$event->getSubject()` は Table（Model）を返す**。保存系イベントで保存されたエンティティは `$event->getData('entity')` で取る（4系の `$model->data` ではない）。
+
+リスナー本体の移行（プラグインの `BcPlugin` が `src/Event/` を**自動 attach** するので、リスナーが壊れていると対象イベント発火で即 Fatal＝横断で最優先に直す）:
+*   **イベント定義**: 4系 `public $events = ['User.beforeFind', ...]` はそのまま使えることが多いが、ハンドラ名は `User.beforeFind` → メソッド `userBeforeFind(EventInterface $event)`（CamelCase）。型ヒントは `\Cake\Event\Event` ではなく **`EventInterface`**。
+*   **`bindModel()` / `unbindModel()` は5系廃止**: beforeFind での動的アソシエーション付与は5系ORM非対応。`contain([...])` を呼び出し側クエリに足すか、対象 Table の `initialize()` に `hasOne/belongsTo` を宣言する方式へ。暫定は `return;`(noop)＋TODO で Fatal だけ回避。
+*   **4系 ORM 残骸**: `$User->find('first', 配列)` → `find()->where()->first()`、`$model->save(配列)` → `newEntity()+save($entity)`、`$model->data` → `$event->getData('entity')`。
+*   **request は immutable**: `$view->request->data['x'] = ...` や `$controller->request->action` への代入は5系で無効。値をビューに渡すなら `$controller->set('x', $v)`、アクション名取得は `$view->getRequest()->getParam('action')`。
+*   **ヘルパー系**: `BcForm::input()` → `BcAdminForm::control()`、`admin_add`/`admin_edit` 等の**4系アクション名**は5系では `add`/`edit`（プレフィックスは prefix で扱う）。
+*   **redirect 配列の `'admin' => true`（4系）→ `'prefix' => 'Admin'`（5系）**（コントローラ/リスナー共通）。
 
 ## Table / ORM レイヤーの移行パターン（BcAddonMigrator が変換しないため手作業必須）
 
@@ -258,6 +285,45 @@ baserCMS 2/4 の Model::getControlSource は Table に残るが中身が4系（`
 - `unbindModel`/`createArrayForJoin` による絞り込みは `contain`/`matching`/`innerJoinWith` で書き換え（複雑なグループ絞り込みは一旦TODOで全件返しにして表示を優先するのも可）。
 - **テンプレート/ヘルパからの呼び出しは `Plugin.ModelPlural.field`（複数形）にする**: `$this->BcAdminForm->getControlSource('Cpm.CpmProject.user_id')`（単数）は、`BcFormHelper::getControlSource` が内部で `TableRegistry::getTableLocator()->get('Cpm.CpmProject')` を引くため **`MissingTableClassException: Table class for alias 'Cpm.CpmProject' could not be found`**。`'Cpm.CpmProjects.user_id'`（複数形）に直す。フォームテンプレ（form.php / _form_*.php / 検索 element）に4系の単数モデル名が散在しがちなので一括 grep（`getControlSource('Plugin.Model[^s].`）。
 
+### T-J. 集計（SUM/集約）メソッドと afterSave の5系化（実証済みパターン）
+4系の集計 Model メソッド（`getAggregateX`/`aggregate*`/`afterSave` 等）を移植する際の定型。**ユニットテストで4系と同値を固定しながら**進めるのが安全（→ `basercms-unittest` のプラグイン単体テスト）。
+
+- **SUM/集約は `func()->sum` ＋ `->first()->alias ?? 0`**: 4系 `find('first', ['fields'=>['SUM(amount) AS total'], 'conditions'=>...])` → 
+  ```php
+  $total = $this->Assocs->find()
+      ->where(['Assocs.user_id' => $userId, 'Assocs.date >=' => $begin, 'Assocs.date <=' => $end])
+      ->select(['total' => $this->Assocs->find()->func()->sum('amount')])
+      ->first()->total ?? 0;
+  ```
+  4系が int キャストしていたら `(int)`、していなければ `?? 0` のまま（decimal は数値文字列で返る）。関連条件があるときだけ `->innerJoinWith('Assocs')`（複数形エイリアス）＋ `'Assocs.type_cd IN'=>[...]`。
+- **空配列の `IN` はエラー**: `'x IN' => $ids` で `$ids` が空配列だと CakePHP5 が `IN ()` を生成して例外。集計対象IDが空になりうるメソッド（ユニット所属ユーザーが0人等）は **先頭で空ガード**し、クエリを回さず 0（や全0の配列）を返す。
+- **`MIN()/MAX()` は `func()->min` の entity マッピングが不安定** → `->orderBy(['x'=>'ASC'])->select(['x'])->first()->x`（最古/最新を1件取る）で代替すると確実。
+- **集計オーケストレーションの戻り値は4系の配列形状を維持**: コントローラ/ビューが `Hash::extract($rows, '{n}.Model')` で消費するメソッド（`aggregateAll` 等）は、5系でも `[ ['Model'=>[...カラム＋集計値...]], ... ]` を返す。find はエンティティを返すので、各行を `array_merge_recursive(['Model'=>$entity->toArray()], ['Model'=>[集計値]])` で組み立てる。`aggregate($data)` 本体が `$data['Model']['id']` 参照＋`array_merge_recursive` なら **配列入力のままで5系互換**（中で4系APIを使っていなければ無改修で再利用できる）。
+- **`virtualFields`（旧 afterFind 計算値）は明示計算メソッドに集約**: 4系 virtualFields（`commitedTotal`/`balance`/`costTotal` 等）は5系に無い。計算を1メソッド（例 `calcBalance($entity)`：内部で集計し `$entity->costTotal = ...` と動的セットして返す）に集約し、**find 後に各行へ適用してから合算**する。複数メソッド（assignee 合計・cost 合計）から再利用できる。
+- **afterSave の月按分・一括再保存**: `afterSave(EventInterface,EntityInterface,ArrayObject): void`。再入防止に `private bool $batchFlg`（冒頭 `if ($this->batchFlg) return;`）。`$entity->date`（`DateTimeInterface` なら `format('Y-m-d')`）から月範囲を作り、`func()->sum` で合計→按分率算出→対象行を再取得し `calc_amount` を再計算→ `$this->batchFlg = true; $this->saveMany($rows); $this->batchFlg = false;`。4系の `$this->data` 参照・`saveAll`・`recursive` を置換。
+- **置換保存(saveMultiple)＝既存削除→新規。`deleteAll` は cascade しない**: 4系 `$Model->delete($id, true)` は `dependent=>true` の子も従属削除したが、**5系 `deleteAll(['id'=>...])` は ORM の cascade を通さず子が孤児として残る**。子を連れて消す必要がある削除は `$e = $T->get($id); $T->delete($e);`（または対象を1件ずつ `delete($entity)`）に置き換える（関連側 hasMany に `dependent=>true` が要る）。置換保存テストでは「子も消えたこと」を assert すると回帰を防げる。
+- **コピーの芋づる複製**: 親 `copy()` は本体を `newEntity/save` で複製し、子は子 Table の `copy($id, $newParentId)` を呼んで再帰複製。子 copy の戻り値は5系では **`EntityInterface|false`**（配列でない）。親側は `->id`＋真偽判定で使う（`$res['Child']['id']` の配列アクセスをしない）。トランザクションは `getConnection()->begin()/commit()/rollback()`。
+- **コールバック本体を後続Planへ遅延するときは「黙って空スタブ」にしない**: 4系シグネチャのままだと save が `BadMethodCallException` になるため afterSave 等は5系シグネチャへ替えるが、本体未実装で空 return にすると**保存時の副作用（集計反映・通知）が黙って消える**。本体に `// TODO baserCMS5移行(後続): ...` を残し、かつ**「現状スタブ(無処理)であること」を固定する tripwire テスト**を1本置く（将来本体を実装するとそのテストが落ちて気づける）。
+- **★[最重要] 5系の `save()` に `callbacks` オプションは無い（4系の `['callbacks'=>false]` は黙って無視）**: CakePHP5 `Table::save($entity, $options)` の既定オプションは `atomic/checkRules/_primary` のみ。**`['callbacks'=>false]` を渡しても afterSave/beforeSave は常に発火する**（4系の callbacks 抑止は5系に存在しない）。これに気づかず4系の `callbacks=>false` をそのまま移植すると、**相互再帰する afterSave（例: 見積↔請求↔プロジェクトが互いを save し合う）が無限ループする**。
+  - **正しい再入防止は「ガードフラグ」**（`afterSave 月按分` の `private bool $batchFlg` と同じ手法）。相互再帰の各 afterSave を持つ Table に再入ガードを置く:
+    ```php
+    private bool $inAfterSave = false;
+    public function afterSave(EventInterface $e, EntityInterface $entity, ArrayObject $o): void {
+        if ($this->inAfterSave) return;        // 再入を遮断
+        $this->inAfterSave = true;
+        try { /* 他テーブルを save（相手 afterSave も走るが、相手側ガード or 値収束で停止） */ }
+        finally { $this->inAfterSave = false; }
+    }
+    ```
+    循環の各エッジは必ずどこかの Table の afterSave を2回目に通るため、各 afterSave に再入ガードを置けば全サイクルが切れる。
+  - イベント自体を一時停止したい場合は `$table->getEventManager()->off('Model.afterSave', ...)` もあるが、ガードフラグの方が局所的で安全。
+  - 移植時 `grep -rn "'callbacks'" src/` で4系由来の無効オプションを洗い出し、ガードフラグへ置き換える（値収束で自然終了する単純ケース以外は必須）。
+- **4系の複数テーブル生SELECT（`SELECT A.*, B.*`）は5系で flat 化に注意**: 4系はテーブルエイリアスで `$row['A'][..]/$row['B'][..]` のネストで返ったが、`getConnection()->execute($sql)->fetchAll('assoc')` は **flat な連想配列**を返す。同名カラム（`id`/`name` 等）が後勝ちで衝突するため、`['A'=>$row, 'B'=>$row]` のように同じ flat 配列を両キーに入れると**値が混ざる**。ORM（`get($id)->contain(['B'])` → `['A'=>$e->toArray(),'B'=>$e->b->toArray()]`）で取り直すか、SELECT で列別名（`A.id AS A__id`）を付けて再構築する。
+
+### T-K. ユーザー↔ユニット(グループ)は 5系 BTM。テストで本番に無い列を捏造しない
+- baser5 の `users` に `user_group_id` 列は**無い**（user↔group は `users_user_groups` の多対多）。4系の `belongsTo('Unit', foreignKey:'user_group_id')` や `hasMany('Users', foreignKey:'user_group_id')` は壊れる。**`belongsToMany` ＋ `joinTable:'users_user_groups'`** に再設計する（向き: users 起点なら foreignKey=user_id/target=user_group_id、user_groups 起点なら逆）。`innerJoinWith` で join し、1ユーザー複数グループ所属の重複を避けるため `->groupBy(['<起点>.id'])`。（条件絞り込みのみの簡易ケースは T-F 行末の生 join 方式でも可）
+- **[最重要の戒め] テストを通すために本番に存在しないカラム（例 `users.user_group_id`）を migration で足してはいけない**。それは本番で壊れる非互換を隠蔽するだけ。正しい5系スキーマ（BTM）で解くこと。テスト用スキーマは本番の `SHOW CREATE TABLE` に忠実に作る。
+
 ### NumberHelper::currency() は null 不可
 `Cake\View\Helper\NumberHelper::currency()` は第1引数が `string|float`。null を渡すと `TypeError`。テンプレートで `$this->Number->currency($e->budget ?? 0, ...)` のように null 合体する。`NumberHelper::format()` も同様（null は `TypeError`）。
 
@@ -277,6 +343,8 @@ baserCMS 2/4 の Model::getControlSource は Table に残るが中身が4系（`
 ## Controller / 画面通し（管理画面）レイヤーの移行パターン
 
 > テーブル層の基盤（T-A〜T-G）を固めた後、画面（コントローラ＋テンプレート＋関連element＋Lib＋依存プラグイン）を1枚ずつ通して潰す工程。1画面が広範囲に波及する（実例: Cpm プロジェクト管理 index = コントローラ + テーブルの calcBalance + CpmUtil(Lib) + index_row/index_list テンプレート + Cards 依存プラグイン）。エラーをブラウザで1つずつ追って潰すのが確実。
+>
+> **画面結合フェーズの定石（テーブル層完了後・ドメイン単位で実証済み）**: ブラウザ手動より先に **ログイン付きコントローラ統合テスト**（`basercms-unittest` 参照）を各コントローラに1本立て、(1) GET で index/edit/add が描画200に到達することで移行漏れを自動検知 →(2) テンプレの `Form->create('Model')`文字列 / 素の `$this->Form->` / ネスト配列アクセス `$row['Model']['x']` を潰す →(3) コントローラの `passedArgs`/`recursive`/`reduceAssociations`/`find('first'|'all'|'list',配列)`/`field()`/`delete($id,true)`/単数形`$this->Model` を5系化 →(4) POST フロー（add/edit/delete・ajax確定）で DB 変化を assert。delete は全画面共通で `get($id)`→`delete($entity)`＋存在しないIDは `try/catch RecordNotFoundException` で4系の graceful 分岐（「無効な処理です。」→index）を再現。設定ビュー変数の欠落は AppController::beforeRender で横断解消（下表 `set(Configure::read(...))` の行）。**注意: 描画テストの 200 OK は `Undefined variable` 等の warning を握り潰す**ので、テスト後に `tests/TestApp/logs/error.log` を grep して pristine を確認すること。
 
 ### C-0. 機械的に一括変換できるパターン（プラグイン全体へ先行一括適用すると効率的）
 画面を1枚ずつ通す前に、**構文を壊さない・意味が一意に定まる**変換はプラグイン全体へ `perl -pi` で先に当てておくと往復が減る（各変換後に必ず `php -l` で全変更ファイルを検証）。Cpm プラグインでの実績（テンプレ＋src）:
@@ -294,12 +362,12 @@ baserCMS 2/4 の Model::getControlSource は Table に残るが中身が4系（`
 | 単数テーブル `get('Cpm.Cpm<単数>')`（src/ヘルパ含む） | → 複数形 `get('Cpm.Cpm<単数>s')` | Helper/Table/Controller 全 src。`grep -rnE "get\('(Cpm\|Cards)\.[A-Za-z]+[^s']'\)"` |
 | `$this->Form->create('Model', ...)`（文字列モデル） | → `$this->BcAdminForm->create(null, [..., 'valueSources'=>['data','context']])` | フォーム/編集テンプレ全般。文字列モデルは `No context provider found for value of type string`（CakeException）。`create\('[A-Za-z]+',`→`create(null,`。`$this->Form->`→`$this->BcAdminForm->` も併せて |
 | `$this->action`（テンプレ）／`'admin_xxx'` | → `$this->getRequest()->getParam('action')`／`'xxx'` | View の `$this->action` 廃止。5系は prefix=Admin で **action名に `admin_` は付かない**（`admin_add`→`add`、`admin_index`→`index`）。getControlSource の mode 判定や create の action分岐に影響 |
-| `$this->BcAuth->user()` | → `\BaserCore\Utility\BcUtil::loginUser()` | 戻りは**エンティティ**（`->name`、`->id`）。テンプレの `$user['id']`（4系は AppController が `$user` を set）も未定義になるので `(\BaserCore\Utility\BcUtil::loginUser()->id ?? null)` に置換 |
+| `$this->BcAuth->user()` | → `\BaserCore\Utility\BcUtil::loginUser()` | 戻りは `UserInterface\|false`（**未ログイン時は `null` ではなく `false`**）。**`?->` は `false` に効かない**ため `BcUtil::loginUser()?->id` は未ログイン時に `Attempt to read property "id" on bool` 警告＋null になる（テスト実行時に顕在化）。堅牢形は `(\BaserCore\Utility\BcUtil::loginUser() ?: null)?->id`（`false ?: null`→null→`null?->id`）か明示分岐 `$u = BcUtil::loginUser(); $u ? $u->id : null;`。`$user['id']` 等の配列アクセスはエンティティ参照へ |
 | `getData()(...)`（二重括弧） | → `getData(...)` | 4系→5系の機械変換ミスで `$this->getRequest()->getData()('Model.x')` のように `()` が二重になっている箇所がテンプレに残る。`sed 's/getData()(/getData(/g'` で一括 |
 | `ConnectionManager::get('default')` + `$db->begin/commit/rollback` | → `$table->getConnection()->begin/commit/rollback` | トランザクションは対象テーブルの接続から |
 | `$this->Form->year('Model.field', ...)` / `->month(...)` | → `control('Model.field.year', ['type'=>'select','options'=>$years,'label'=>false])` 等 | **`FormHelper::year()/month()` は CakePHP5 で廃止**。`$years`/`$months` をテンプレ冒頭で自前生成。`getData('Model.field')` は `['year'=>,'month'=>]` で受かる |
 | `$this->postConditions($data)`（コントローラ） | → 検索条件を明示的に組み立て | **`Controller::postConditions()` は5系廃止**。`Call to undefined method`。`if(!empty($d['Model']['x'])) $conditions['Models.x']=...` を手書き |
-| `$this->set(Configure::read('Cpm'))` の欠落 | → 一覧/Vue画面の冒頭で必ず set | テンプレが参照する設定ビュー変数（`$billingStatuses`/`$taxRateList` 等）の `Undefined variable`。4系は AppController が自動 set していた分を各 action で補う |
+| `$this->set(Configure::read('Cpm'))` の欠落 | → **プラグイン Admin AppController の `beforeRender()` で1回 set ＋ 各コントローラがそれを継承** | テンプレが参照する設定ビュー変数（`$billingStatuses`/`$taxRateList`/`$saleTypes`/`$estimateTypes` 等）の `Undefined variable`。4系は **プラグイン AppController::beforeRender が全画面に自動 set** していた。★5系の落とし穴: `bin/cake bake` 由来や手移植の Admin コントローラは **`BaserCore\Controller\Admin\BcAdminAppController` を直継承**しがちで、プラグインの `CpmAppController`（=4系の set を持つべき層）を経由しない→設定ビュー変数が全画面で欠落。**正しい直し方は per-action set ではなく、`src/Controller/Admin/CpmAppController.php` に `public function beforeRender(EventInterface $event): void { parent::beforeRender($event); $this->set(\Cake\Core\Configure::read('Cpm')); }` を置き、各 Admin コントローラを `extends CpmAppController` にする**（per-action の重複 set は削除）。横断的に一発で解消できる。`Configure::read('Cpm')` の値自体は `BcPlugin::bootstrap()`/`config/setting.php` で load 済みか確認（未 load なら C-D で復元） |
 
 注意: `'div'`/`'between'`/`'after'` 等 input 専用の旧オプションは control では HTML属性に漏れることがあるが Fatal にはならない（画面通し時に個別清掃）。`searches/`→`search/`（C-G）はディレクトリ移動＋各フォームの他4系記法も伴うので一括ではなく画面ごとに行う。
 
@@ -316,6 +384,9 @@ baserCMS 2/4 の Model::getControlSource は Table に残るが中身が4系（`
   - 条件キーは**複数形エイリアス**（`CpmProject.x`→`CpmProjects.x`、`CpmEstimate.x`→`CpmEstimates.x`）。
 - `$Db = $this->Model->getDataSource(); $Db->buildStatement([...])` 等の4系クエリ生成は廃止 → クエリビルダ、または合計などは「条件に合致するIDを取得→`func()->sum()`」で再実装。
 - **[重要] protected ヘルパーの移動漏れ**: `createAdminIndexConditions()` 等、admin_index が呼ぶ protected メソッドは `BcAddonMigrator` が Admin コントローラに移動しないことがある（フロント側に残る or どこにも無い）。4系の元実装を Admin コントローラに移植し、条件キーを複数形エイリアス・`find('list')`→クエリビルダ・生SQLの旧プレフィックス除去で5系化する。
+- **コンポーネントは自動ロードされない**: 4系 `public $components = ['Plugin.Excel']` 等は5系で消える。`$this->Excel->...` を使うアクションは `initialize()` に `$this->loadComponent('Plugin.Excel')`。無いと `$this->Excel` が null/未定義で Fatal（cf. CpmBillings の Excel ダウンロード）。
+- **delete アクションの定石**: `$this->getRequest()->allowMethod(['post','delete'])` → `$entity = $table->get($id)`（`try/catch RecordNotFoundException`→「無効な処理です」→index）→ `$table->delete($entity)`。4系 `$this->Model->delete($id)` の id 直渡しは廃止（エンティティを渡す）。delete を `FormProtection` の `unlockedActions` に登録（bca-submit-token POST は `_Token` 無し）。
+- **横断の「残骸＝呼ぶと即 Fatal」パターンと段階戦略**: 大規模プラグインは `index/add/edit` だけ移行され、**`delete`/`ajax_*`/CSV/Excel/メール/Slack が4系のまま放置されがち**（`$this->Model->`動的null・`find('first',配列)`・`getDataSource`）。これらは**呼ぶまで動かないので「画面は開くが操作で500」**になる。横断で潰すなら ①静的コードチェックで全残骸を列挙 → ②**「構文だけ5系化」を一括**（`php -l`＋既存テスト回帰ゼロを完了条件にし、この段では新規テストを書かない）→ ③テスト＆ブラウザで意味検証、の順が速い。**外部依存(Slack/メール/CSV/Excel/集計)は中身を移さず `// TODO baserCMS5移行:` か `throw new \Cake\Http\Exception\NotImplementedException(...)` で deferred を明示**（4系本体を放置すると呼んだとき黙って Fatal するので、ガードして「未実装」を顕在化させる）。
 
 ### C-A2. 廃止コンポーネント（PaginatorComponent / RequestHandlerComponent 等）
 `$this->loadComponent("Paginator")` は `MissingComponentException: PaginatorComponent could not be found`。**CakePHP 5 で PaginatorComponent は廃止** → `initialize()` から削除し、ページネーションは `$this->paginate($query)` を直接使う。同様に `RequestHandlerComponent` も廃止（`$this->getRequest()->is('ajax')` 等で代替）。`initialize()` の `loadComponent()` を点検する。
@@ -339,7 +410,8 @@ baserCMS 2/4 の Model::getControlSource は Table に残るが中身が4系（`
 - **View での `$View->request` / `$this->request` プロパティアクセスは「ヘルパ自動ロード」を誘発する**: CakePHP5 の View には `request` プロパティが無く、`$View->request->params[...]`（4系）は **未知プロパティ→ヘルパ `request` ロード**扱いで `<Plugin>.requestHelper could not be found`（MissingHelperException）になる（`$this->data` と同じ罠＝C-C 参照）。`$View->getRequest()->getParam('controller')` / `getRequest()->getData(...)` に直す。**特にイベントリスナ（`Form.afterForm` 等、全フォームで発火）に残っていると無関係な画面まで巻き込んで落とす**ので、`dispatchAfterForm()` 経由で別プラグインのリスナが落ちたら、そのリスナ（例 `OnemindHelperEventListener::formAfterForm`）の `$View->request` を最優先で5系化する。ガードの controller 比較も CamelCase（`'Users'`）・action は `admin_` なし（`edit`/`add`）。
 - **コントローラ生SQL `fetchAll('assoc')` は「フラット連想配列」＝テンプレの4系ネスト形と不一致**: 4系で `$this->Model->query($sql)` が返したネスト形 `$row[0]['total']` / `$row['Model']['x']` を前提にしたテンプレに、5系で `getConnection()->execute($sql)->fetchAll('assoc')`（フラット `$row['total']`）を渡すと、`$row[0]` が null になり**値が空・合計0**になる。テンプレ側を `$practice['total']`/`$practice['date']` のフラット参照に直す。**合計が0だと `($v/$total)*100` で `DivisionByZeroError`** も誘発するので `$total ? (...) : 0` でガード（症状: 「Division by zero」エラー画面）。SQLの別名は `Xxx__yyy` ではなく平易名（`total`/`date`）で出す。
 - **`$this->data`（4系 View のリクエストデータ）は `MissingHelperException` を誘発**: CakePHP5 の View には `data` プロパティが無く、`$this->data->x` は未知プロパティ→**ヘルパ `data` の自動ロード**扱いになり `Cpm.dataHelper could not be found`。`$this->getRequest()->getData('Model.x')` に置換（一覧 element 等では該当キー無し→null で falsy になり従来の分岐が保たれる）。`grep -rn '\$this->data\b'` で一掃。
-- **`$this->Time->format()` の日付書式は ICU パターン（PHP date() ではない）＋第2引数省略は日時**: CakePHP5 の `TimeHelper::format`/`i18nFormat` は ICU 形式。`Y`=週年・`m`=分・`M`=月・`y`=年なので `'Y-m-d'` だと月が分(0)になり `2026-0-31` のlike表示。**`'yyyy-MM-dd'`** に直す（時刻込みは `'yyyy-MM-dd HH:mm'`）。また **`format($d)` と第2引数を省略すると日時（`2026-01-01 00:00:00`）になる**ので、日付のみ表示にしたい一覧等では `'yyyy-MM-dd'` を必ず付ける（横断対応: `grep -rnE "Time->format\([^,)]+\)"` で第2引数なしを洗い `Time->format($1, 'yyyy-MM-dd')` に一括）。`$this->BcTime->format` も同様。
+- **`$this->Time->format()` の日付書式は ICU パターン（PHP date() ではない）＋第2引数省略は日時**: CakePHP5 の `TimeHelper::format`/`i18nFormat` は ICU 形式。`Y`=週年・`m`=分・`M`=月・`y`=年なので **`'Y-m-d'` も `'Y/m/d'` も月が分(0)になり `2026-0-31` / `2026/0/31` のlike表示**になる（スラッシュ版でも同じ罠）。ハイフン表示は **`'yyyy-MM-dd'`**、スラッシュ表示は **`'yyyy/MM/dd'`**（時刻込みは `'yyyy-MM-dd HH:mm'`）。また **`format($d)` と第2引数を省略すると日時（`2026-01-01 00:00:00`）になる**ので、日付のみ表示にしたい一覧等では必ず付ける（横断対応: `grep -rnE "Time->format\([^,)]*, '[YmdHis/.: -]*'\)"` で PHP形式を洗い ICU へ一括）。`$this->BcTime->format` も同様。
+  - **★[重要] 一覧表示と編集フォームで「日付の整形手段」が違う＝format 文字列も違う**: ①**一覧テンプレ**で値を表示するのは `$this->Time->format($e->x, ...)`（**ICU**）→ `'yyyy/MM/dd'`。②**編集フォームの入力欄**に出すために convert で日付オブジェクトを文字列化するのは **PHP の `$v->format('Y/m/d')`**（`DateTimeInterface::format`＝PHP date形式で月は正しい `06`）。この2つは別物で、同じ `'Y/m/d'` でも ICU 経路では月=0、PHP 経路では正しい。「一覧の日付が `2026/0/30`」なら ICU(TimeHelper) を PHP形式の文字列で呼んでいる＝`'yyyy/MM/dd'` に直す。「編集欄の日付」なら `$v->format('Y/m/d')`（PHP）でよい（共通 Util `CpmUtil::formatDateObjectsForForm` がこれ）。
 - **日付の null 安全**: 一覧で null になりうる日付列は `$this->Time->format($e->x, 'yyyy-MM-dd')`（Time helper は null で空文字）か、エンティティの Chronos を `$e->x?->format('Y-m-d')`（こちらは **PHP** date() 形式）で出す。
 - **`Text::truncate()` / `BcText::truncate()` は CakePHP5 で第1引数 string 必須（null 不可）**: nullable なカラム（備考・notes 等）を渡すと `Cake\Utility\Text::truncate(): Argument #1 ($text) must be of type string, null given`（TypeError）。`truncate((string)$e->notes, 46)` のように **`(string)` キャスト**する。同様に他の文字列必須ヘルパ（`h()` は null 許容だが、`truncate`/`stripTags` 等）に nullable を渡す箇所は横断的にキャストを当てる。
 - **`NumberHelper::format()` / `Number::format()` も第1引数 string|int|float 必須（null 不可）**: `$this->Number->format($this->getRequest()->getData('Model.amount'), [...])` で値が null（未入力カラム）だと `NumberHelper::format(): Argument #1 ($number) must be of type string|int|float, null given`（TypeError）。`format($x ?? 0, [...])` でガード。フォームの金額表示（budget/tax/taxed_budget/billing_amount 等）に多発するので `grep -n "Number->format(" 該当テンプレ` で一括。
@@ -365,6 +437,34 @@ baserCMS 2/4 の Model::getControlSource は Table に残るが中身が4系（`
 - **`Invalid prop: Expected Object/Array, got String with value "R"/"u"...`（1文字ずつ）= ajax が壊れている兆候**: ajax アクションが `$this->ModelName`（null）や `query()` で **fatal** を起こすと、レスポンスがJSONでなくエラーHTML/文字列になり、Vue が配列の代わりに**文字列**を受け取って `v-for` が**文字単位で反復**する（プロパティ警告が1文字ずつ大量に出る）。原因は Vue ではなく**サーバ側 ajax アクション/モデルメソッドの未移行**。エンドポイントを `fetchTable()` 化し、返すデータ構造（Vue が参照するフィールドのフラット配列）を整える。例: `byClient()` は `find()->contain([...])` の各エンティティを `toArray()` して Vue の `billing.id/name/amount/...` に合わせたフラット配列で返す（`Hash::extract('{n}.Model')` は不要）。
 - **Table メソッド内での手動ヘルパー生成**: 集計SQLで都道府県名等を引くため `new BcTextHelper(new View())` のような4系記法がある場合、5系は名前空間付きで `new \BaserCore\View\Helper\BcTextHelper(new \Cake\View\View())`。
 - **CSV出力等の未スコープ生SQL**: `download_csv` が呼ぶ `salesByMonthGroupByProject` など「画面表示に使わない」メソッドは後回しにしやすい。`$this->ModelName->`（null）や `query()` が残ると実行時に落ちるので、その機能を使う段で個別移行する。
+
+### C-F2. ★バンドルJSが参照する DOM id / name が5系の生成規則と食い違う（描画は通るのに JS 連携が静かに死ぬ）
+4系前提の `.bundle.js`（および `webroot/js/src` の JS/Vue）は **4系の DOM 命名**でDOMを掴むが、5系の `BcAdminForm->control()` は**別の id/name を生成する**ため、セレクタが何もマッチせず**イベント・自動入力・計算が無言で動かなくなる**（PHP エラーも JS エラーも出ないことが多く、画面は正常に見える）。実例: 見積フォームで「クライアント選択→提出先へ反映」「プロジェクト選択→件名へ反映」「見積タイプ切替で備考/請求方法切替」等が全滅していた。
+
+- **2つの食い違い（両方確認する）**:
+  1. **id**: 4系 `CpmEstimateSubmissionTarget`（CamelCase）⇔ 5系 `control('CpmEstimate.submission_target')` は **`cpmestimate-submission-target`（モデル別名+フィールドを小文字ハイフン）**。`#CpmEstimateXxx` セレクタが全滅。
+  2. **name**: 4系 `name="data[CpmEstimate][field]"` ⇔ 5系 `name="CpmEstimate[field]"`（`data[...]` プレフィックス無し）。`input[name='data[Model][field]']` セレクタが全滅。
+  - 例外: `CpmForm->projectPicker` 等**自前で明示 id を振るヘルパ**のフィールドは CamelCase id のまま（変更不要）。＝同一フォームで「ヘルパ製=CamelCase」「素 control=kebab」が混在し気づきにくい。
+
+- **調査法（画面移行時に必ず1回やる）**:
+  - JS が掴む id/name を洗う: `grep -roE "#Cpm[A-Za-z]+|\\\$\\(\"#[A-Za-z]+\"|name=['\"]?data\\[[A-Za-z]+\\]" webroot/js/src`（`#CamelCaseId` と `data[Model][...]` を列挙）。
+  - 実レンダリングの id/name と突合: 管理画面をログイン付き統合テストで GET し body をダンプ（`basercms-unittest` のダンプ法）、`grep -oE 'id="[^"]+"|name="[^"]+"'` で**JS が期待する id/name が実在するか**を確認。**素 control は kebab・`Model[field]` で出る**ので、JS の `#CamelCase`/`data[...]` は基本マッチしない＝要対応。
+  - 描画200・PHPテスト緑でも**この不整合は検出できない**（JS実行はしないため）。手動ブラウザ確認 or 「期待 id がHTMLに存在する」アサート（下記）で締める。
+
+- **直し方（2案。原則は JS を5系生成 DOM に寄せる）**:
+  - **推奨: JS 側を5系の生成 id/name に合わせて再ビルド**。`data[Model][field]`→`Model[field]`、`#CamelCase`→実 kebab id（または name+value セレクタ `input[name="Model[field]"]:checked` 等）。label の `for`/aria が崩れず、id 重複も起きない。要 webpack 再ビルド（C-F）。
+  - **代替: テンプレ control に明示 `id` を付けて4系 CamelCase を復元**（`control('Model.field', [..., 'id' => 'ModelField'])`）。**バンドル再ビルド不要**で id 駆動の処理を最短復旧できるが、下記リスクに注意。name は変えない（POSTキーが壊れる）。ラジオ/チェックボックスは name セレクタで掴むことが多く id 付与不要なことも。
+  - **★control の id を変更/明示する際のリスク**:
+    - **label の `for` 不一致**: 5系 `label('Model.field')` は**フィールド名から kebab id を `for` に自動生成**する。control の id だけ変えると label クリックでフォーカスが当たらない → label にも `['for' => 同じid]` を合わせる（1対1ラベルの画面では必須）。
+    - **error 表示の aria 連携 / CSS / 他JS / E2E** が `#旧id` を参照していると外れる（`grep -rn "#旧id" webroot/css webroot/js` で確認）。
+    - **id 重複**: 同一画面に同種フォーム（add＋検索フォーム等）があると明示 id がぶつかる。
+    - POST・バリデーション・`getData`・エラー検出は **name ベースなので id 変更の影響なし**（id は送信に使われない）。
+
+- **★Vue/JS が動的生成するフォーム行（明細・工数等）の保存が `Unexpected field '...' in POST data`（BadRequestException）で落ちる**: 5系の管理画面は `FormProtection`（フォーム改竄防止）が効いており、**フォーム描画時にDOMへ存在しないフィールドは送信トークンに含められない**。Vue が後から足す明細行（`v-for` 生成の input）はトークンに無いため、送信すると `FormProtection` が弾く。4系(CakePHP2)は該当コントローラが `SecurityComponent` 未使用で素通りしていた挙動。さらに**メモリ枯渇エラー(`Allowed memory size exhausted` in `exception_stack_trace.php`)として現れることがある**＝巨大POSTを含む例外トレースの描画が重いだけで、真因はスタックに出る `Unexpected field` の方（トレースを読む）。
+  - **直し方は2点セット**:
+    1. **POST 名を5系形式に**: Vue の `:name="'data[Model][' + i + '][field]'"`（4系）→ `:name="'Model[' + i + '][field]'"`。5系コントローラは `getData('Model')`／`saveMultiple($this->getRequest()->getData(), $id)`（中で `$records['Model']`）で受けるため、`data[...]` プレフィックスが付くと `getData('data.Model...')` になり**拾えない**（弾かれなくても保存されない）。要 webpack 再ビルド。
+    2. **動的アクションを `unlockedActions` に登録**: コントローラの `beforeFilter` で `$this->FormProtection->setConfig('unlockedActions', ['add','edit', ...POSTする全アクション])`（baser-core の `ContentsController`/`PluginsController` と同手法）。フォーム全体（`send_order` 等そのフォームから serialize して投げる ajax アクションも）対象に含める。存在しないアクション名を入れても無害だが正確に。
+  - **検証**: 「明細を含む POST で `assertRedirect`（=BadRequest にならない）＋明細が実際に保存される（`find()->where(['estimate_id'=>$id])->count()===N`）」統合テストで固定する（`basercms-unittest` の POST フローテスト）。CSRF は別ミドルウェア（`CsrfProtection`）なので unlockedActions では無効化されない（CSRF は維持される）。
 
 ### C-G. 検索フォーム（setSearch）と生SQLのカスタムページネーション
 - **検索フォームの配置ディレクトリ（横断対応）**: 5系の `setSearch('xxx_index')` は **`templates/Admin/element/search/xxx_index.php`（単数 `search/`）** を読む（コア `bc-admin-third/.../element/search.php` が `'search/' . $name` を解決）。4系/変換後は **`searches/`（複数）** に置かれていて `エレメントテンプレート search/xxx が見つかりませんでした` になる（**全画面で再発する＝横断対応すべき典型**）。**1画面で遭遇したら全検索フォームをまとめて処理する**: ①`searches/*.php` 全件に `$this->Form->`→`$this->BcAdminForm->`・`create('Model',…)`→`create(null,…)` を一括適用 → ②`search/`（単数）へ全移動（`git mv`） → ③既に移行済みのファイルは `searches/` 側を破棄 → ④空の `searches/` を削除 → ⑤全件 `php -l`。

@@ -8,6 +8,8 @@ license: MIT
 
 このプロジェクトでは、以下の技術スタックおよび設計方針に従って開発されています。
 
+> **推奨: 5系の開発に着手する前に一度 `basercms5-claude-workflow-setup`（環境セットアップ）を参照し、進め方の環境（設計=superpowers brainstorming／権限整理=permissions-audit／その上での Auto mode／spec・plan の Markdown プレビュー）を整える。提案ベースで、整っていればスキップ。**
+
 ---
 
 ## 使用技術

@@ -1,6 +1,6 @@
 ---
 name: basercms4-to-5-upgrade
-description: 'baserCMS 4 (CakePHP 2ベース) のコード・サイトを baserCMS 5 (CakePHP 5ベース) へアップグレード／移行する際に AIエージェントが遵守すべきルールとパターン集。「baserCMS 4 から 5 へ移行」「4系を5系にアップグレード」「BcDbMigrator でデータ移行」「BcAddonMigrator でテーマ／プラグイン変換」「CakePHP 2 → CakePHP 5 への書き換え」「admin_ プレフィックスメソッドの Controller/Admin への移動」「config/setting.php・config.php の return 配列化」「init.php 廃止と PluginClass 作成」「migration_snapshot 生成」「site_configs theme → sites theme」「request->data／query／params の getter 化」「File/Folder クラス廃止」「ClassRegistry → TableRegistry」「FrozenTime → DateTime」「FixtureManager → FixtureFactory」等、4→5 アップグレード作業全般で参照する。プラグイン内部コード（Controller/Table/Entity/View/Helper/フォーム/Vue・JS）の具体的な書き換えパターンは basercms-plugin-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest スキルを参照。'
+description: 'baserCMS 4 (CakePHP 2ベース) のコード・サイトを baserCMS 5 (CakePHP 5ベース) へアップグレード／移行する際に AIエージェントが遵守すべきルールとパターン集。「baserCMS 4 から 5 へ移行」「4系を5系にアップグレード」「BcDbMigrator でデータ移行」「BcAddonMigrator でテーマ／プラグイン変換」「CakePHP 2 → CakePHP 5 への書き換え」「admin_ プレフィックスメソッドの Controller/Admin への移動」「config/setting.php・config.php の return 配列化」「init.php 廃止と PluginClass 作成」「migration_snapshot 生成」「site_configs theme → sites theme」「移行の標準フロー／工程の順序」「プラグインを DB で直接有効化」「テーマを DB で直接適用」「request->data／query／params の getter 化」「File/Folder クラス廃止」「ClassRegistry → TableRegistry」「FrozenTime → DateTime」「FixtureManager → FixtureFactory」等、4→5 アップグレード作業全般で参照する。プラグイン内部コード（Controller/Table/Entity/View/Helper/フォーム/Vue・JS）の具体的な書き換えパターンは basercms-plugin-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest スキルを参照。'
 license: MIT
 ---
 
@@ -17,6 +17,37 @@ license: MIT
 3.  **アクセサの利用**: プロパティへの直接アクセスは避け、Getter/Setter を使用してください。
 4. アップグレードの詳細情報については https://baserproject.github.io/5/ver5_migration を参考にする。
 5. **【最重要・横断対応の原則】1画面の修正で見つけた不具合のうち、同じ原因がプラグイン/サイト全体に散在するものは、その場で“横断的に”一括対応する**。1箇所だけ直して次の画面で同じエラーに当たる、を繰り返さない。手順: ①エラーを直したら **同じパターンを `grep -rn` で全件洗い出す**（例: `$this->Form->input(`、`'multiple' => 'checkbox'`、単数 `get('Cpm.Cpm...')`、`searches/`、`Time->format($x)` 第2引数なし 等）→ ②機械的に一意な変換は `perl -pi` で一括適用 → ③**変更ファイルを全て `php -l` で検証** → ④非自明な箇所だけ個別対応。横断一括できる代表例は **basercms-plugin-4-to-5-upgrade スキルの C-0（機械的に一括変換できるパターン）** にカタログ化してある（見つけ次第追記する）。新しい横断パターンを見つけたらまず C-0 に追加してから一括実行する。プラグイン内部コード（Controller/Table/Entity/View/Helper/フォーム/Vue・JS）の具体的な書き換えは同スキルを参照。
+
+## 標準移行フロー（この順で進める・正本）
+
+**移行全体はこのチェックリストの順序で進める**。順序依存の罠（★印）が複数あるため、節の並びや思い込みで順番を変えないこと。各工程の詳細は参照先の節に書いてある。
+
+- [ ] **0. 実行環境の確認** — Docker利用有無・コンテナ名・PHPバージョン・プロキシ構成をユーザーに確認 → 「前提: 実行環境の確認」節
+- [ ] **1. 4系の現状調査** — プラグイン一覧（`app/Plugin/`）・テーマ（`theme/`）・DB名/プレフィックス・マルチサイト有無・サブモジュール有無（`find app/Plugin theme -name .git`）・管理プレフィックス（`app/Config/core.php` の `Routing.prefixes`）を洗い出す
+- [ ] **2. 移行対象の確定（棚卸し）** — プラグイン・テーマを1つずつ (a)既存5系版利用/(b)4系を変換/(c)廃止 に分類し、**表でユーザーの合意を取る** → 「プラグイン棚卸し」節
+- [ ] **3. 移行計画の作成** — 棚卸し結果を反映した計画を作成しユーザー承認（進め方の環境は `basercms5-claude-workflow-setup` 参照）
+- [ ] **4. トピックブランチ作成** — 移行作業用ブランチを切る（例 `git switch -c basercms5-migration`）。v5 配置物の git 取り込み時の注意は「Git / リポジトリ運用」節（G-1〜G-4）
+- [ ] **5. 4系バックアップ作成** — v4 管理画面「データメンテナンス」で作成 → zip を `v5/tmp/` へ。**★PHP切替（7.4→8.1）を伴う環境では、v5 インストール＝PHP を上げる【前】に必ず取る**（上げた後だと v4 管理が不調になり得る）→ 「データベース移行手順」節 1.
+- [ ] **6. 5系を `/v5/` にインストール** — パッケージ取得 → composer → .env → `bin/cake install` → 実ブラウザでログイン確認 → 「baserCMSの最新版の取得」〜「baserCMSのインストール」節
+- [ ] **7. BcDbMigrator 導入 → DB変換** — 変換zipの出力まで。**★復元はまだしない**（工程12まで待つ）→ 「データベース移行手順」節 2.-3.
+- [ ] **8. BcAddonMigrator 導入** — 「テーマの変換」節 2.
+- [ ] **9. (a)既存5系版の導入 ＋ (b)テーマ・プラグインの変換・配置** — (b) は zip 化 → `bc_addon_migrator` → `v5/plugins/` 展開。**★(a) の導入もここ（復元前）で行う**。終盤に回すとそのプラグインのテーブルにデータが復元されない → 「テーマの変換」「プラグインの変換」節
+- [ ] **10. プラグインを DB で直接有効化** — `plugins` テーブル INSERT（Migrations を持つものは `migrations migrate -p` 併走）。**★有効化で boot 経路の4系残骸が fatal 化するので、`bin/cake version` スモークが通るまで最小修正**。検証は CLI＋SQL まで（**ブラウザ確認はまだしない** — 画面は工程15-17の5系化まで出なくて正常）→ 「プラグインの有効化（DB直接・標準）」節
+- [ ] **11. テーマを DB で直接適用** — `sites.theme` UPDATE ＋ キャッシュ全消去 → 「テーマの適用（DB直接）」節
+- [ ] **12. DB復元** — v5 管理画面「データメンテナンス」で変換済み zip をブラウザ復元（復元CLIなし・ユーザー実施）。**★必ず工程10-11（有効化・適用）の後**。直前に管理画面ログインの生存だけ確認（フロントは見ない）。復元後にテーブル生成・件数を SQL で検証 → 「データベース移行手順」節 4.
+- [ ] **13. アップロードファイルの移行** — `/files` → `/v5/webroot/files` → 「アップロードファイルの移行」節
+- [ ] **14. 移行台帳（ファイル一覧）の作成** — 対象プラグイン・テーマごとに構成ファイル一覧と状態（未着手/5系化済み/懸案メモ）を記した台帳を scratchpad か `docs/` に作る。以降の横断チェック・動作確認の進捗と懸案はすべてここに記録する
+- [ ] **15. テーマの横断チェック → 5系化** — TH-系パターン（`siteConfig[]`廃止・`fullUrl()`廃止 等）を grep で全件洗い出して一括対応 → `basercms-plugin-4-to-5-upgrade` スキル（TH-系）
+- [ ] **16. プラグインの横断チェック → 5系化** — C-0（機械一括変換カタログ）を先に全プラグインへ適用 → T-/C-系を個別対応。**無理な改善（動くものの過剰リファクタ）はせず、気づきは台帳にメモして先へ進む** → `basercms-plugin-4-to-5-upgrade` スキル
+- [ ] **17. 変換対象プラグインを1つずつ動作確認** — **★開始前に移行対象プラグインを一旦全部無効化し（`UPDATE plugins SET status=0 WHERE name IN (...)`＋キャッシュクリア）、確認対象を1つずつ有効化しながら進める**。イベントリスナー等で他プラグインの影響を受けやすく、全部有効のままだと不具合の切り分けができないため。対象が他プラグインに依存する場合は**その依存プラグインだけ**を併せて有効化する。プラグインごとに次の順で:
+  - a. コントローラ/テンプレート以外（Table/保存/集計）をユニットテストで確認（依存が重いものはスキップ可・台帳にメモ）→ `basercms-unittest` スキル
+  - b. コントローラの統合テストを作成して実行（**この時点の失敗は許容**して台帳に記録）
+  - c. ユーザーにブラウザ動作確認を依頼（URLはリンク付きで提示）→ エラーはスクリーンショット/文言をもらって解決
+  - d. b. で失敗していたコントローラテストを解決（緑化）
+  - e. 対象の確認が終わったら有効のまま次のプラグインへ（最終的に全対象が有効・全確認済みになる）
+- [ ] **18. 懸案プラグインの方針決定・対応** — 棚卸しで「要確認」だったもの・台帳の懸案メモを、ユーザーと方針決定（対応/延期/廃止）して消化する
+- [ ] **19. 最終統合テスト** — ユーザーが実ブラウザでフロント・管理・フォーム・ブログを通し確認。問題があれば解決
+- [ ] **20. Git 取り込み → 完了** — G-1〜G-4 の確認をして v5 をコミット → 「Git / リポジトリ運用」節
 
 ## 前提: 実行環境の確認（最初に必ず行う）
 
@@ -37,6 +68,8 @@ license: MIT
 2.  **Task Artifact (task.md)**: 進捗管理のチェックリスト、タスク名、サマリー。
 3.  **Implementation Plan Artifact**: 実装計画の詳細、ゴール、変更内容、検証計画。
 4.  **Walkthrough Artifact**: 作業の振り返り、検証結果の報告。
+
+**[重要・URLはリンク付きで提示]** ユーザーに**ブラウザでの動作確認を依頼する場合**（管理ログインURL・データメンテナンス画面・フロント確認 等）は、URL を**必ず Markdown のリンク付き**（`[https://...](https://...)`）で表示する。プレーンテキストのURLで出さない（ユーザーがクリックしてすぐ開けるようにするため）。例: `👉 [https://catchup-official.localhost/v5/baser/admin/baser-core/users/login](https://catchup-official.localhost/v5/baser/admin/baser-core/users/login)`。
 
 
 ## baserCMSの最新版の取得
@@ -61,6 +94,8 @@ docker exec -w /var/www/html <container> bash -lc \
 
 `composer install` を実行します。
 
+- **パッケージ版の `vendor/` は空（`.gitkeep` のみ）なので `composer install` は必須**。展開直後に `test -d vendor` が真でも中身は空のことがある（`.gitkeep` だけでディレクトリが存在するため）。`vendor/autoload.php` の有無で判定し、無ければ `composer install` する。
+
 - **4系プラグインが使っていたサードパーティ製パッケージは v5 に明示的に `composer require` する**: 4系 `composer.json` 由来のライブラリ（例 `phpoffice/phpspreadsheet`）は v5 の `composer.json`/vendor に入っていないことがあり、`Class "PhpOffice\PhpSpreadsheet\Reader\Xlsx" not found` 等になる。4系の `composer.json` を参照し、PHP バージョン（v5 は 8.1+）に合うバージョンで導入する（例 `docker exec -w <v5> <container> composer require "phpoffice/phpspreadsheet:^1.29"` → 1.30.x が入る）。実行後 `php -r 'class_exists(...)'` で解決を確認。
 - **Excel/PDF 等の雛形アセット（.xlsx 等）は `templates/Admin/Excel/...` に移行され、4系の `View/Excel/admin/...` とはパス構成が違う**: 生成系コンポーネント（CpmExcel 等）が `Plugin::templatePath('Cpm') . 'Excel' . DS . 'admin' . DS . ...`（4系配置）を組み立てていると `File "..." does not exist`。`templatePath()` は**末尾スラッシュ付き**なので `. DS .` を足すと `//` になる点も注意。5系の実配置 `Plugin::templatePath('Cpm') . 'Admin' . DS . 'Excel' . DS . <controller> . DS . <file>.xlsx` に直す（実ファイル位置を `find <plugin> -iname "*.xlsx"` で確認）。
 
@@ -76,12 +111,17 @@ docker exec -w /var/www/html <container> bash -lc \
 5系用の新しいデータベースを作成し、`v5` フォルダ内でインストールコマンドを実行します。
 
 ```
-bin/cake install [設置URL（例：https://localhost）] [管理者メールアドレス] [管理者パスワード] basercms --host [ホスト名] --username [DBユーザー名] --password [DBパスワード]
+# 引数の並び: <設置URL> <管理者メール> <管理者パスワード> <データベース名>
+#   ★第4引数がDB名。--database というオプションは存在せず、付けると `Unknown option `database`` で失敗する
+#   ★サブディレクトリ設置では --baseurl も付ける
+bin/cake install [設置URL（例：https://localhost/v5/）] [管理者メール] [管理者パスワード] [DB名（例 <既存DB>_v5）] \
+  --baseurl [/v5/] --host [DBホスト名] --username [DBユーザー名] --password [DBパスワード]
 ```
 
-データベース名は、既存のデータベース名にサフィックスとして `_v5` を付与したものを作成した上で、インストールしてください。
+- **データベース名は第4位置引数**（`--database` オプションは無い）。既存のデータベース名にサフィックスとして `_v5` を付与したものを作成した上で渡す。
+- **サブディレクトリ設置では `--baseurl /v5/` を付ける**。
 
-また、サブディレクトリに設置する前提のため、`v5` 配下の `.htaccess` の RewriteBaseの調整が必要となります。
+`.htaccess` の RewriteBase は**多くの場合そのままで動く**（5系既定の `.htaccess` は相対リライトのため、`/v5/` サブディレクトリでも無調整で通ることが多い＝実証済み）。**`/v5/v5` 二重化(404) やリダイレクトループが出た場合にのみ** `webroot/.htaccess` の `RewriteBase` を調整する（まずは下記 SITE_URL とキャッシュ残りを疑う）。
 
 ログインURLは、`https://localhost/v5/baser/admin/baser-core/users/login` のような形となります。
 
@@ -102,7 +142,10 @@ bin/cake install [設置URL（例：https://localhost）] [管理者メールア
     1.  **バックアップ (v4)**: baserCMS 4 管理画面「データメンテナンス」でバックアップを作成し、ダウンロードした zip を `/v5/tmp/` に配置してもらう。
         *   **[重要・PHPバージョンとの順序]** v4 バックアップ作成には **v4 管理画面が動く PHP** が要る。v5 のために先にコンテナを PHP 8.1 へ上げると、サポート外の v4 管理が不調になり得る。**バックアップは PHP を上げる前に取る**か、既に上げてしまったら**一時的に v4 サポート版（例 php7.4）へ戻して**バックアップを取り、再度 8.1 へ戻す（v4 と v5 は必要 PHP が違うため同時稼働はできない）。
         *   **[重要・v4 管理URLは決め打ちしない]** 管理ログインが `/admin` で 404 になるサイトは**管理プレフィックスを変更している**（`app/Config/core.php` の `Configure::write('Routing.prefixes', ...)`。例 `cmsadmin` → `/cmsadmin/users/login`、データメンテナンスは `/cmsadmin/tools/maintenance`）。**404 を安易に「PHP切替で壊れた」と誤診しない**——まず `Routing.prefixes` を確認する。
-    2.  **ツール準備 (v5)**: `BcDbMigrator` を GitHub から取得し `plugins/BcDbMigrator` に配置（composer 不可）。**有効化は2通り**:
+    2.  **ツール準備 (v5)**: `BcDbMigrator` を配置する。**取得は composer でも GitHub でも可**（旧記載の「composer 不可」「plugins/ 必須」は誤り＝composer 取得可・**vendor 配下でも baserCMS は認識する**）:
+        *   **(a) composer**: packagist に `baserproject/bc-db-migrator` が公開されており `composer require baserproject/bc-db-migrator:^5.2` で取得できる。ただしこのパッケージの `composer.json` に autoload 定義が無いため、cakephp plugin-installer が `Unable to get primary namespace` で `config/plugins.php` への**自動登録に失敗する**（＝ダウンロード自体は成功）。確実に使うなら、取得済みファイルを `plugins/BcDbMigrator` にコピーして下記の DB 有効化を行う（composer からは `composer remove` して composer.json をクリーンに保つとよい）。
+        *   **(b) GitHub**: `git clone --branch 5.2.0 https://github.com/baserproject/BcDbMigrator.git plugins/BcDbMigrator`（clone 後 `.git` を除去してサブモジュール化を回避）。※Auto mode では外部リポジトリ取得が分類器にブロックされることがあるので、ユーザーに取得元を提示して承認を得る。
+        **有効化は2通り**:
         *   **(推奨・低摩擦) DB レコードで有効化**: `BcDbMigrator` は**インストールスクリプト（マイグレーション）を持たない**ため、`plugins` テーブルに1行 INSERT すれば有効化できる（`name='BcDbMigrator', title='BcDbMigrator', version='5.2.0', status=1, db_init=1, priority=<末尾+1>, created/modified=NOW()`）。ブラウザ操作不要。有効化後 `bin/cake` にコマンドが出る。
         *   (代替) 管理画面のプラグイン管理からインストール。※`cake plugin load`／`config/plugins.php` 直接編集は不可（ルーティング不整合でクラッシュ要因）。
     3.  **変換実行（CLI 対応・5.2.0 以降）**: **BcDbMigrator 5.2.0 で CLI 実行に対応**した（旧版はブラウザ専用）。`docker exec <container> bash -lc 'cd v5 && bin/cake bc_db_migrator tmp/<v4バックアップ>.zip'` を実行すると、変換済み zip が `v5/tmp/baserbackup_<v5version>_<日時>.zip` に出力される（アップロード/ダウンロードの往復が不要。エラー時もアシスタントが反復できる）。変換は一時接続（`bcOldDbMigrator`/`bcNewDbMigrator`・接頭辞付き一時テーブル）で行われ**ライブ DB は変更しない**（出力は zip のみ）。
@@ -111,7 +154,7 @@ bin/cake install [設置URL（例：https://localhost）] [管理者メールア
             $contents = preg_replace('/extends CakeSchema/', 'extends BcSchema', $contents);
             $contents = str_replace('<?php', "<?php\nuse BaserCore\\Database\\Schema\\BcSchema;", $contents);
             ```
-            （本家 BcDbMigrator 未対応のためのローカルパッチ。上流へ報告候補。）
+            （本家 BcDbMigrator 未対応のためのローカルパッチ。**根本原因は baser-core 側**＝`isValidSchemaFile()` が短縮名の完全一致のみ許可し FQN を弾く点。これを FQN も受理するよう緩和する修正を baserproject/basercms へ **PR #4438（5.3.x 宛）で提出済み**。マージ・リリースまでは本ローカルパッチ（BcDbMigrator 側で短縮名に置換）が必要。5.3 以降ではパッチ不要になる見込み。）
     4.  **復元 (v5)**: baserCMS 5 管理画面「データメンテナンス」で変換後 zip を復元（**復元CLIは無くブラウザ専用**）。**この工程はプラグイン棚卸し/変換の後**に行う（下記「プラグイン」注意点）。
 
 3.  **注意点**:
@@ -155,7 +198,7 @@ bin/cake install [設置URL（例：https://localhost）] [管理者メールア
         # ルートが MyCustomTheme/ であること、theme/ ディレクトリが含まれていないことを確認
         ```
 2.  **ツール**: baserCMS 5 に `BcAddonMigrator` をインストール・有効化します（GitHubより取得）。
-        *   **注意**: `BcAddonMigrator` は composer ではインストールできません。GitHub から取得し、`plugins/BcAddonMigrator` に配置してください。また、`cake plugin load` ではなく、管理画面のプラグイン管理よりインストールが必要です。
+        *   **注意**: `BcAddonMigrator` は GitHub から取得し、`plugins/BcAddonMigrator` に配置する。有効化は **`plugins` テーブルへの直接 INSERT で可**（インストールマイグレーションを持たないため。実証済み。「プラグインの有効化（DB直接・標準）」節の手順2）。`cake plugin load`／`config/plugins.php` 直接編集は不可。
 3.  **変換（コマンドライン）**: `bc_addon_migrator` コマンドを使用してテーマを変換します。
     ```bash
     # Docker環境の場合
@@ -221,7 +264,13 @@ bin/cake install [設置URL（例：https://localhost）] [管理者メールア
     ```bash
     rm -rf v5/tmp/zip v5/tmp/*_5.2.0.zip
     ```
+    *   **★`baserbackup_*.zip`（DB変換済みバックアップ）は削除しない**。`v5/tmp/` には BcDbMigrator の出力 zip も同居しているため、ワイルドカードは変換中間 zip（`<PluginName>_<version>.zip`）だけに掛かるよう対象を限定する。
+    *   **`rm -rf` が Bash 権限で拒否される環境では `find <path> -delete` を使う**（例: `find v5/tmp/zip -delete`。ファイル個別は `find v5/tmp -maxdepth 1 -name '<Name>_*.zip' -delete`）。
     *   **注意**: 変換は完全ではありません。必ずコード全体を目視確認し、手動修正を行ってください。
+    *   **BcAddonMigrator がやること／やらないこと（実測）**:
+        *   やること: `Controller/Model/View` の `src/` 名前空間化、`admin_` メソッドの `Controller/Admin` 分離、`src/<Name>Plugin.php` の生成（**空クラス** `class <Name>Plugin extends BcPlugin {}`）、`config.php`/`setting.php` の return 配列化。
+        *   やらないこと: **`config/Schema`（4系 CakeSchema）→ `config/Migrations` への変換**（4系 Schema がそのまま残る）、**`config/init.php` の除去**（残骸として残る）、内部コードの5系化（`ClassRegistry`・`$this->data` 等は残存）。
+        *   つまり変換直後は「配置と `php -l` は通るが、Migrations 無し・4系残骸あり」が正常な状態。復元運用なら有効化に支障はない（「プラグインの有効化（DB直接・標準）」節参照）。Migrations 生成・残骸掃除・内部5系化は横断チェック工程（フロー15-17）で行う。
 3.  **手動修正**:
     *   **ディレクトリ構成**: コントローラーの `admin_` プレフィックスメソッドは `Controller/Admin` 名前空間へ移動されています。
     *   **設定ファイル**: `config/setting.php` の `BaserCore.nav` などの配列構造の調整。また、`$config` 変数定義ではなく、配列を `return` する形式に変更。
@@ -248,6 +297,58 @@ bin/cake install [設置URL（例：https://localhost）] [管理者メールア
     *   **フィード**: フィードプラグインは廃止されたため、代替手段を検討。
 
 
+
+## プラグインの有効化（DB直接・標準）
+
+配置した移行対象プラグインの有効化は、**`plugins` テーブルへの直接 INSERT を標準**とする。ブラウザ往復ゼロでエージェントが自走でき、検証も SQL で完結する（管理画面有効化は代替手段として注記参照）。
+**★テーマは `plugins` テーブルに登録しない**（新規インストール直後の `plugins` にデフォルトテーマ BcFront の行が無いことから実証済み）。テーマの適用は次節「テーマの適用（DB直接）」の `sites.theme` UPDATE のみでよい。
+
+1.  **有効化前チェック（プラグインごと）**: `ls v5/plugins/<Name>/config/Migrations` で **Migrations の有無を確認**する。
+    *   (a)既存5系版のプラグインは通常 Migrations を持つ（有効化時にテーブル作成が必要）。
+    *   (b)`BcAddonMigrator` 変換組は通常 Migrations を持たない（4系 `config/Schema` が残っているだけ）。**復元 zip にスキーマ＋データが含まれるかを `unzip -l v5/tmp/baserbackup_*.zip | grep -iE "<table名>"` で確認**し、含まれていれば復元がテーブルを供給するので Migrations 生成は不要（クリーンインストール運用にする場合のみ `bake migration_snapshot` で生成）。
+2.  **`plugins` テーブルへ INSERT（全プラグイン共通）**:
+    ```sql
+    INSERT INTO plugins (name, title, version, status, db_init, priority, created, modified)
+    VALUES ('<Name>', '<Name>', '<version>', 1, 1,
+            (SELECT p FROM (SELECT COALESCE(MAX(priority),0)+1 AS p FROM plugins) tmp), NOW(), NOW());
+    ```
+    複数件あるときは priority を連番でずらす。
+3.  **Migrations を持つプラグインはマイグレーションを併走**（INSERT だけではテーブルが作られない）:
+    ```bash
+    docker exec <container> bash -lc 'cd /var/www/html/v5 && bin/cake migrations migrate -p <Name>'
+    ```
+4.  **キャッシュ全消去**: `bin/cake cache clear_all`（プラグインロード構成が変わるため）。
+5.  **検証は CLI 起動スモーク＋SQL まで（この段階でブラウザ確認はしない）**: `SELECT name, status FROM plugins` で status=1、Migrations 実行組は `SHOW TABLES` でテーブル生成を確認し、**`bin/cake version` が fatal なくバージョン番号を返すこと**（=有効プラグイン全部の bootstrap が通ること）を確認する。**フロント/管理画面のブラウザ確認はまだ求めない** — 内部コードが4系のままなので画面は出なくて正常。ブラウザ確認は動作確認工程（標準フロー17）以降。管理画面が必要になるのは復元（フロー12）だけなので、その直前に管理画面ログインだけ生存確認すればよい。
+
+### ★有効化で顕在化する boot 経路の4系残骸（先に潰す）
+
+(b)変換組を有効化すると、**画面以前にアプリ起動（bootstrap）で fatal になる4系残骸**が動き出す（`php -l` では捕まらない実行時エラー）。有効化後の `bin/cake version` スモークで1つずつ顕在化するので、**最小修正（TODO マーカー付き）だけ**してフロー15-16（本格5系化）へ先送りする。実測した典型パターン:
+
+| 場所 | 症状 | 最小修正 |
+|---|---|---|
+| `src/Event/*EventListener.php` | `Class "<NS>\Event\ClassRegistry" not found`（BcEvent が有効プラグインのリスナーを bootstrap で instantiate するため、コンストラクタ内の4系APIが即死） | `ClassRegistry::isKeySet/getObject` 分岐を削除し `TableRegistry::getTableLocator()->get()` 一本化 |
+| `config/setting.php` | `Class "CakeLog" not found` ／ Configure::load が配列を得られない | `CakeLog::config()` 等の実行文を除去（ログ設定は Phase 4 で Plugin::bootstrap へ）。`$config['X'] = [...]` は `return ['X' => [...]]` へ |
+| `config/setting.php` 内の4系定数 | `Undefined constant "CACHE_DATA_PATH"` 等 | 5系の定数（`TMP`・`CACHE` 等）へ置換 |
+| `config/routes.php` | `Router::connect` 静的呼び出し・`CakeRequest`・`BcSite::findByUrl` で fatal | ファイル全体を `return;` で無効化＋旧定義をコメント保存（Phase 4 で RouteBuilder 形式に書き換え） |
+
+スモークが通る（`bin/cake version` がバージョンを返す）までこの表の要領で潰す。
+
+*   **直 INSERT が安全な根拠**: `BcAddonMigrator` が生成する Plugin クラスは空（`class XxxPlugin extends BcPlugin {}`）で独自 install 処理を持たないため、管理画面有効化との差は「マイグレーション自動実行の有無」だけ。それは手順3で補える。**独自の `install()` をオーバーライドしているプラグインだけは中身を確認**し、必要なら管理画面から有効化する。
+*   （代替）管理画面のプラグイン管理から有効化するとマイグレーションが自動実行される。ユーザーがブラウザ操作できる状況ならこちらでもよい。
+*   `config/plugins.php` の直接編集は不可（既出の注意どおりクラッシュ要因）。
+*   **この工程で全対象を有効化するのは「復元でテーブル・データを取り込むため」**（フロー12の前提）。復元が済んだら、動作確認工程（フロー17）の開始時に**移行対象を一旦全部無効化**し、確認対象＋その依存だけを1つずつ有効化しながら進める（イベント干渉の切り分けのため）。無効化/再有効化は `UPDATE plugins SET status=0（/1） WHERE name='<Name>'`＋`bin/cake cache clear_all` で行える（テーブルとデータは残るので安全）。
+
+## テーマの適用（DB直接）
+
+5系ではテーマは `site_configs` ではなく **`sites` テーブルの `theme` カラム**で管理される。適用も DB 直接更新を標準とする。
+
+```sql
+-- サイトごとに適用（マルチサイトは site 単位で theme を持つ。全サイト同一テーマなら WHERE 句なし）
+UPDATE sites SET theme = '<CamelCaseTheme>' WHERE id = 1;
+```
+
+*   適用後は必ず `bin/cake cache clear_all`（テーマ解決がキャッシュされるため）。
+*   検証は**実ブラウザ**でフロントを開き、テーマのテンプレートが使われていること（500 でないこと）を確認。テーマ側テンプレートの4系残骸でエラーになる場合は、この時点では台帳に記録して工程15（テーマ横断チェック）で対応する。
 
 ## プラグイン内部コードの変換（別スキル）
 

@@ -1,6 +1,6 @@
 ---
 name: basercms-plugin-4-to-5-upgrade
-description: 'baserCMS 4 (CakePHP 2ベース) のプラグイン内部コードを baserCMS 5 (CakePHP 5ベース) へ移行する際の、Controller/Table/Entity/View/Helper/フォーム/Vue・JS の具体的な書き換えパターン集。「プラグインを4から5へ移行」「admin_ メソッドを Controller/Admin へ」「public $belongsTo/$hasMany を initialize() へ」「ClassRegistry/TableRegistry」「find(all/first/list, 配列) をクエリビルダへ」「$this->Model（null）を fetchTable へ」「getControlSource の単数→複数形」「$this->Form を BcAdminForm・control() へ」「検索フォーム searches/→search/」「FormHelper::create 文字列モデル→null」「FormHelper::year()/month()/domId() 廃止」「Time::format の ICU パターン」「Number::format/Text::truncate の null 不可」「配列条件の IN 自動付与なし・null は IS」「Vue/JS の admin URL を $.bcUtil.adminBaseUrl へ＋webpack 再ビルド」「$this->data / $View->request がヘルパ誤ロードを誘発」「MissingTableClassException / MissingHelperException / No context provider found」等、プラグインの画面・モデル・テンプレート・フロント表示のエラーを1つずつ潰す作業で参照する。サイト全体の4→5移行手順（インストール/DB移行/テーマ・プラグイン変換手順/Git運用）は basercms4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest スキルを参照。'
+description: 'baserCMS 4 (CakePHP 2ベース) のプラグイン内部コードを baserCMS 5 (CakePHP 5ベース) へ移行する際の、Controller/Table/Entity/View/Helper/フォーム/Vue・JS の具体的な書き換えパターン集。**テーマ（Controller/Tableを持たずtemplates/layout・element・Blog・Pages・Mail＋少数Helperで構成）の移行もこのスキルの対象**（末尾「テーマ（Theme）固有の移行パターン」TH-系: `$this->BcBaser->siteConfig[...]`廃止・`fullUrl()`廃止・4系専用Componentの直接インスタンス化・`blogPosts()`等の廃止ショートカットメソッド・他プラグインHelper依存の切り分け 等）。「プラグインを4から5へ移行」「admin_ メソッドを Controller/Admin へ」「public $belongsTo/$hasMany を initialize() へ」「ClassRegistry/TableRegistry」「find(all/first/list, 配列) をクエリビルダへ」「$this->Model（null）を fetchTable へ」「getControlSource の単数→複数形」「$this->Form を BcAdminForm・control() へ」「検索フォーム searches/→search/」「FormHelper::create 文字列モデル→null」「FormHelper::year()/month()/domId() 廃止」「Time::format の ICU パターン」「Number::format/Text::truncate の null 不可」「配列条件の IN 自動付与なし・null は IS」「Vue/JS の admin URL を $.bcUtil.adminBaseUrl へ＋webpack 再ビルド」「$this->data / $View->request がヘルパ誤ロードを誘発」「MissingTableClassException / MissingHelperException / No context provider found」等、プラグインの画面・モデル・テンプレート・フロント表示のエラーを1つずつ潰す作業で参照する。サイト全体の4→5移行手順（インストール/DB移行/テーマ・プラグイン変換手順/Git運用）は basercms4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest スキルを参照。'
 license: MIT
 ---
 
@@ -12,12 +12,17 @@ license: MIT
 
 ## 移行の進め方（最重要・最初にやる順序）
 プラグインの 4→5 移行は、**画面を1枚ずつ場当たりで直す前に、まず横断で全体を片付ける**のが速くて安全。実証済みの推奨順序:
-1. **全ファイルの状態台帳化**: src/templates/js/migration を1行1ファイルで `未着手/移行中/移行済/見送り/対象外` 管理（種別×状態サマリ付き、生きたドキュメント）。どこが残っているか俯瞰できる。
+
+> **★★[必須ゲート] あるプラグインの5系化に着手したら、コードを1行でも触る前に、まずステップ1の「ファイル状態台帳」を作る。台帳が無いうちは静的監査(2)も構文変換(3)も始めない。** これは飛ばしやすい（監査や Table 変換にすぐ着手したくなる）が、台帳が無いと「どのファイルが未着手/見送りか」を俯瞰できず、進捗の抜け・二重作業・deferred の取りこぼしが起きる。台帳ファイルを作成 → プレビュー（`markdown-to-html`）→ それから 2 以降に進む。
+
+1. **全ファイルの状態台帳化**: src/templates/js/migration を1行1ファイルで `未着手/移行中/移行済/見送り/対象外` 管理（種別×状態サマリ付き、生きたドキュメント）。どこが残っているか俯瞰できる。作成後は状態が変わるたびに更新する（例: `docs/migration/<plugin>-file-ledger.md`）。
 2. **★横断コードチェック（静的監査）を最初に**: 全5系コードをアクション/メソッド単位で4系正本と突合し、`移行済 / deferred / 4系残骸 / 未実装` ＋バグ(深刻度)＋ブラウザ確認ポイントを監査ドキュメント化する。**テストを書く前**にやることで、残骸/即Fatal/設計判断が要る箇所を地図化でき手戻りが激減する。並列サブエージェントで種別/ドメイン別に分担すると速い（`basercms-unittest` の横断監査メモ参照）。
 3. **★横断「構文だけ5系化」を次に**: 監査で出た4系残骸を5系構文へ一括変換（`$this->Model->`→fetchTable、`find('first',配列)`→builder、`getDataSource`→getConnection、Event の `bindModel`/`$event->data` 等。下記 C-0/C-A/§8 のカタログを適用）。**完了条件は「php -l 全クリーン＋4系API残骸grepゼロ(deferredのTODO除く)＋既存フルスイート回帰ゼロ」。この段では新規テストを書かない**。Fatal を一掃して「5系構文として成立」の土台を作る。外部依存(Slack/メール/CSV/Excel/集計)は中身を移さず `// TODO baserCMS5移行:` か `NotImplementedException` で deferred 明示。
 4. **テスト＆ブラウザで意味検証**: 構文変換だけでは保証できない **entity↔配列・日付marshal・afterSave連鎖・FormProtection・view変数の形・JS連携(C-F2)** を、描画する統合テスト＋ブラウザ確認で詰めて `移行済` に上げる。`php -l` は構文しか見ず描画/JSの死は捕まらないのでこの段が必須。
 
 > なぜ 2→3 を先にやるか: 構文残骸は「画面は開くが delete/ajax/CSV を押すと500」のように**呼ぶまで顕在化しない**。先に全部洗って構文を5系化しておけば、以後のテスト＆ブラウザは「動くはずの土台の上で意味を確認する」作業に集中でき、Fatal とロジック誤りが混ざらない。
+
+> **★★[運用原則] 横断作業中に「対応イベント/対応APIが5系に無い」「再設計が要る」等で無理に実装しない判断をしたら、その場でコードに `// TODO baserCMS5移行: <理由>` を残すだけでなく、必ず1の「ファイル状態台帳」にも該当行を追記・更新する**（状態を「見送り(deferred)」にし、理由と代替案の要点を一言添える）。コード内TODOだけだと後で台帳を見ても分からず、逆に台帳だけだとコードを読む人に伝わらない——**両方に書いて初めて「無理な実装をせず記録する」運用が機能する**。判断に迷ったら実装を止めてこの記録に切り替えるのが正しい（無理に動かして壊すより安全）。実例: PopularBlogPost プラグインで、CakePHP5に無い `Model.afterFind`（一覧へのランキング注入）と廃止された `bindModel`（設定の動的結合）を deferred にした際、コードのTODOコメントと `docs/migration/popular-blog-post-file-ledger.md` の両方に理由（対応イベント無し・代替手段）を記録した。
 
 ## 横断対応の原則（同一原因の散在は一括で）
 1画面の修正で見つけた不具合のうち、同じ原因がプラグイン全体に散在するものは、その場で**横断的に**一括対応する（1箇所だけ直して次画面で同じエラーに当たる、を繰り返さない）。手順: ①直したら同じパターンを `grep -rn` で全件洗い出す（例: `$this->Form->input(`、`'multiple' => 'checkbox'`、単数 `get('Cpm.Cpm...')`、`searches/`、`Time->format($x)` 第2引数なし 等）→ ②機械的に一意な変換は `perl -pi` で一括適用 → ③変更ファイルを全て `php -l` で検証 → ④非自明な箇所だけ個別対応。横断一括できる代表例は **C-0** にカタログ化（見つけ次第追記）。新しい横断パターンを見つけたら C-0 に追加してから一括実行する。
@@ -625,4 +630,34 @@ URL配列だけでなく、**ヘルパー読み込み・テーブルエイリア
 ### F-9. ブログ記事のソート列 `posts_date` は5系に存在しない
 `SQLSTATE[42S22]: Unknown column 'BlogPosts.posts_date'`。5系の `blog_posts` の投稿日時カラムは **`posted`**。
 - **修正**: ソート指定を `'sort' => 'posted'` にする。カラム名は移行先DBの `SHOW COLUMNS FROM blog_posts;` で確認するのが確実。
+
+## テーマ（Theme）固有の移行パターン（T-/C-系との違い）
+
+> **テーマは Controller/Table を持たない**（プラグインと構造が根本的に異なる）ため、上記 T-（Table/ORM）・C-（Controller/画面）カタログは基本的に適用外。テーマの主体は `templates/layout` `templates/element` `templates/Blog` `templates/Pages` `templates/Mail` と、少数のフロント表示ロジック用 `src/View/Helper/*.php`。**F-系（フロント表示エラー）が主対象**だが、テーマ特有の"消えたショートカット系ヘルパーメソッド"の当たり方がプラグインと異なるため、以下に固有パターンとしてまとめる（`basercms4-to-5-upgrade` の「テーマの変換」章から呼ばれる想定）。
+
+### TH-1. `$this->BcBaser->siteConfig['key']` / ビュー変数 `$siteConfig['key']` は5系に存在しない
+4系は `BcBaserHelper` に `siteConfig` プロパティがあり、また `AppController` が全ビューへ `$siteConfig` をグローバル変数としてセットしていたが、**5系の `BcBaserHelper` に `siteConfig` プロパティは存在せず**、`$siteConfig` もビューへ自動セットされない。テンプレート内で `$siteConfig['formal_name']`／`$this->BcBaser->siteConfig['address']` のような配列アクセスをそのまま残していても構文エラーにはならず、**未定義変数／未定義プロパティの警告つきで空文字が出力される**だけなので気づきにくい（サイト名・住所等が黙って空になる）。
+- **修正**: `\BaserCore\Utility\BcSiteConfig::get('address')` のように**静的メソッド**へ置換する。取得できるキーは `formal_name`／`address`／`name`／`google_maps_api_key` 等、4系 `site_configs` テーブルの `name` 列と同じ。
+- **横断対応**: 1箇所で見つけたら `grep -rn "siteConfig\[" templates/ src/` でテーマ全体を洗い、layout・element・Helper 全てに機械的に適用する（本パターンは `default.php` の1箇所から発見し、同テーマ内の `google_maps.php` 3箇所へ横展開した実例あり）。
+
+### TH-2. グローバル関数 `fullUrl()` は5系に存在しない
+4系はグローバル関数 `fullUrl($url)` が使えたが、5系には存在しない（`Call to undefined function fullUrl()` でFatal）。
+- **修正**: `\BaserCore\Utility\BcUtil::fullUrl($url)`（静的メソッド）に置換する。
+
+### TH-3. 4系専用 Component をテーマ Helper が直接インスタンス化しているコードは即Fatal — 先に baser-core に同等機能が移植されていないか確認する
+4系のテーマ独自 Helper が `new XxxComponent(new ComponentCollection())` のように CakePHP2 の Component を直接生成しているコードが、`BcAddonMigrator` の機械変換後もそのまま残ることがある。`Component` 基底クラスも `ComponentCollection` も5系に存在しないため**呼び出された瞬間にFatal**（F-4「ヘルパーの手動インスタンス化」と同根だが、対象が Component である点が異なる）。
+- **対処の順序**: いきなり自前で再実装しない。**まず `grep -rli "<機能キーワード>" vendor/baserproject/` で baser-core／該当コアプラグインに同等のユーティリティが既に移植されていないか確認する**。baserCMS5 は主要な4系専用ロジック（Google Geocoding 連携など）を `BaserCore\Utility\*` や `BaserCore\View\Helper\*` として先に移植済みのことが多い。
+- **実例**: テーマの `BcGooglemapsHelper::getLocation()` が `new BcGmapsComponent(new ComponentCollection())`（4系 `lib/Baser/Controller/Component/BcGmapsComponent.php`。中身は Google Geocoding API への XML リクエスト）を呼んでいた。調査の結果、baser-core に **`BaserCore\Utility\BcGmaps::getLocation($address)`**（`Cake\Http\Client` でのHTTPリクエスト化＋`Cache` によるキャッシュ付き、戻り値 `['latitude'=>..,'longitude'=>..]` は4系と同一形）が既に存在した。テーマ側は独自の `load()`/`_getScript()` インターフェースは残しつつ、`getLocation()` の中身だけをこのコアユーティリティへの委譲に差し替えるだけで解決した（自前でのHTTPクライアント実装・XMLパース実装は不要だった）。
+- **見落としがちな呼び出し元**: Component 呼び出しは Helper 内に隠れているため、要素テンプレート側からは「単なるメソッド呼び出し」にしか見えない。要素テンプレートで実際にそのメソッドへ到達する条件（デフォルト引数のときだけ呼ばれる、等）を先に読み解いてから Helper 側の実装を追う（本例では「緯度経度が明示指定されていないときだけ `loadLocation()`→`getLocation()` に到達する」という条件分岐を確認してから着手した）。
+
+### TH-4. `BcBaserHelper` の一部4系専用ショートカットメソッドは5系で完全廃止・代替APIも無い（layoutに潜みやすい）
+4系の `BcBaserHelper` にあった `blogPosts($blogName, $num)` のようなフロント用ショートカットメソッドは、5系の `baser-core` は元より `bc-blog` 等どのプラグインにも移植されていない（`grep -rln "function blogPosts" vendor/baserproject/` で0件＝TH-3の「コアに移植済み」パターンとは違い、**本当に無い**）。呼び出すと「メソッドが存在しない」系のFatalになる。
+- **見つけ方**: テーマの `templates/layout/*.php` は目立たない1行呼び出し（`$this->BcBaser->blogPosts('works', 8);` 等）でブログ記事一覧を差し込んでいることが多く、element監査だけでは見落としやすい。**layout ファイルも element と同様に全文を読み、`$this->BcBaser->` に続くメソッド名を一つずつ `grep -rln "function <名前>"` で baser-core・関連プラグインに実在するか裏取りする**。
+- **修正方針**: 代替APIが無いため、`BlogPostsTable` のクエリビルダで手動再実装するしかない（`getConditionAllowPublish()` ＋ `innerJoin` で対象ブログの `Contents.url` を絞り込み、`orderBy(['BlogPosts.posted'=>'DESC'])->limit($num)` が基本形）。同種の呼び出し（例: 「works」用と「news」用など複数箇所）が散在する場合は、都度インラインで書かず、テーマの `ThemeHelper` 等に共通メソッドとして1つに集約するとよい。
+- **重複実装との突合を忘れない**: 移行済みの他要素（例: 「works」ブログ一覧を独自に querybuilder で実装した `element/top_works.php`）と機能が重複していないか確認する。重複していた場合、どちらが正のロジックかはコードだけでは判断できないことが多いため、**ユーザーに確認してから**一本化する（横断で無理に実装せず確認を挟む、という運用原則をここでも適用する）。
+
+### TH-5. layout/element から他プラグインの Helper を直接呼ぶコードは「テーマのバグ」と「依存プラグイン未導入」を区別する
+テーマの layout やエレメントが `$this->Banner->showBanner(...)` のように**別プラグインが提供する Helper** を直接呼んでいることがある。移行作業を `フェーズ3.5（棚卸し）` → `フェーズ4-(b)（テーマ/プラグイン機械変換）` → `フェーズ4-(a)（マーケット配布の5系プラグイン導入）` のように段階分けしている場合、その依存プラグインがまだ導入されていない段階でテーマ側だけ見ると `Undefined property: $this->Banner`（Helper未ロード）に見えるが、**これはテーマのコードの不具合ではなく、依存プラグインのフェーズがまだ来ていないだけ**のことがある。
+- **対処**: 台帳では「未着手／移行済」ではなく **「見送り（依存プラグイン未導入・フェーズ4-(a)待ち）」**のように区別して記録し、テーマ単体の完了条件に含めない。該当プラグインの導入フェーズが終わった後で改めて動作確認する。
+- 呼び出し元のメソッド名・期待するオプション（`['num' => 0]` 等）だけは、後で突き合わせられるよう台帳にメモしておく（導入される5系版プラグインでシグネチャが変わっている可能性があるため）。
 

@@ -217,6 +217,10 @@ license: MIT
 
 リスナー本体の移行（プラグインの `BcPlugin` が `src/Event/` を**自動 attach** するので、リスナーが壊れていると対象イベント発火で即 Fatal＝横断で最優先に直す）:
 *   **イベント定義**: 4系 `public $events = ['User.beforeFind', ...]` はそのまま使えることが多いが、ハンドラ名は `User.beforeFind` → メソッド `userBeforeFind(EventInterface $event)`（CamelCase）。型ヒントは `\Cake\Event\Event` ではなく **`EventInterface`**。
+*   **★他プラグイン修飾のイベント名は4系のままだと「無発火（エラーも出ない）」**（実証済み・BlogPostTenImage/PopularBlogPost で発見）。5系の命名へ改名する:
+    *   **Model系**: 4系 `Blog.BlogPost.afterSave` → 5系 **`BcBlog.BlogPosts.afterSave`**（プラグイン名=5系プラグイン名・モデル名=Table名の複数形）。ハンドラ名も `bcBlogBlogPostsAfterSave` に合わせる。
+    *   **View系**: 5系は `BcViewEventDispatcher` が標準 `View.afterRender` 等を `View.<Plugin>.<ViewName>.afterRender` として再ディスパッチする方式。4系 `Blog.Blog.afterRender` → 5系 **`BcBlog.Blog.afterRender`**（View の `getPlugin()`/`getName()` に一致させる。vendor の `BcViewEventDispatcher.php` で確認できる）。
+    *   **存在確認の方法**: 発火側（`vendor/baserproject/bc-blog` 等）を `grep -rn "dispatchLayerEvent\|createEvent"` して**実在するイベントに合わせる**。4系にあって5系に無いもの（例: **`Model.afterFind` はトリガー自体が5系に不在**）は発明せず deferred（TODO＋台帳の両方に記録）。
 *   **`bindModel()` / `unbindModel()` は5系廃止**: beforeFind での動的アソシエーション付与は5系ORM非対応。`contain([...])` を呼び出し側クエリに足すか、対象 Table の `initialize()` に `hasOne/belongsTo` を宣言する方式へ。暫定は `return;`(noop)＋TODO で Fatal だけ回避。
 *   **4系 ORM 残骸**: `$User->find('first', 配列)` → `find()->where()->first()`、`$model->save(配列)` → `newEntity()+save($entity)`、`$model->data` → `$event->getData('entity')`。
 *   **request は immutable**: `$view->request->data['x'] = ...` や `$controller->request->action` への代入は5系で無効。値をビューに渡すなら `$controller->set('x', $v)`、アクション名取得は `$view->getRequest()->getParam('action')`。

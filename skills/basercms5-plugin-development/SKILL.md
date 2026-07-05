@@ -156,6 +156,7 @@ baserCMS 5系（CakePHP 5ベース）で**プラグインを新規開発・改�
 
 リスナーは `src/Event/` に置く。**プラグインの BcPlugin が自動 attach する**ため、リスナーが壊れているとイベント発火で即 Fatal になる点に注意して書く。
 
+- **自動 attach の実体・ファイル名の厳密な規則**: `BaserCore\Utility\BcEvent::registerPluginEvent()`（`BaserCorePlugin` から有効化済み全プラグインに対して呼ばれる）が、`src/Event/{Plugin名}{Controller|Model|View|Helper|Mailer}EventListener.php` という**ファイル名と完全一致するクラス**だけを自動生成・`EventManager::instance()->on()` で登録する。例えば `<Plugin>` プラグインでヘッダーを差し替えるビューイベントリスナーなら、ファイル名は必ず `src/Event/<Plugin>ViewEventListener.php`、クラス名も `<Plugin>ViewEventListener` にする（名前が1文字でもズレると静かに登録されず、イベントが一切発火しない）。
 - **基底クラス**: モデル系は `BcModelEventListener`、コントローラ系は `BcControllerEventListener`、ビュー系は `BcViewEventListener`、ヘルパ系は `BcHelperEventListener` を継承する。
 - **イベント名の命名規則**: `public $events = [...]` に登録する。
   - 自プラグインのモデルイベント: `'SampleArticles.afterSave'`（**Table 名の複数形**）。

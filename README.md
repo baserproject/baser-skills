@@ -11,6 +11,7 @@ baserCMS / CakePHP / PHP の開発・移行で使う **Agent Skills** を共有�
 | [`basercms5-development`](skills/basercms5-development/SKILL.md) | baserCMS 5系（CakePHP 5）＋ jQuery プロジェクトの開発ルール集（構成・命名・ログ・サーバ制約） |
 | [`basercms5-plugin-development`](skills/basercms5-plugin-development/SKILL.md) | baserCMS 5系（CakePHP 5）プラグインの新規開発・改修の正本パターン集（bake／管理画面／Table・Entity／initialize 等） |
 | [`basercms5-theme-development`](skills/basercms5-theme-development/SKILL.md) | baserCMS 5系（CakePHP 5）テーマの新規開発・改修の正本パターン集（テーマプラグイン構造／layout・element／固定ページテンプレート 等） |
+| [`basercms5-custom-content-development`](skills/basercms5-custom-content-development/SKILL.md) | baserCMS 5系の標準プラグイン bc-custom-content（カスタムコンテンツ）でコンテンツ種別を新規構築・改修する際の正本パターン集（Service API／フィールド命名制約／display_front・custom_entries.name の罠／フィールドタイプ別エスケープ挙動 等） |
 | [`basercms5-claude-workflow-setup`](skills/basercms5-claude-workflow-setup/SKILL.md) | baserCMS5 の開発・移行を Claude Code で始める際の推奨ワークフロー環境セットアップを提案（brainstorming／permissions-audit／Auto mode／spec・plan プレビュー等。提案ベース・opt-in） |
 | [`basercms4-to-5-upgrade`](skills/basercms4-to-5-upgrade/SKILL.md) | baserCMS 4 → 5（CakePHP 2 → 5）サイト全体のアップグレード／移行手順とルール集 |
 | [`basercms-plugin-4-to-5-upgrade`](skills/basercms-plugin-4-to-5-upgrade/SKILL.md) | プラグイン内部コードの 4 → 5 書き換えパターン集（Controller/Table/Entity/View/Helper/フォーム/Vue・JS） |

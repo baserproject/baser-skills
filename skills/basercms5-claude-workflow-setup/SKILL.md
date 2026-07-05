@@ -92,4 +92,3 @@ spec（設計書）や plan（実装計画）など**レビュー目的の Markd
 - 技術パターン（実装）: `basercms5-development`（5系共通ルールの基底）/ `basercms5-plugin-development`（プラグイン開発の正本）/ `basercms5-theme-development`（テーマ開発の正本）/ `basercms-plugin-4-to-5-upgrade`（プラグイン4→5の書き換え＋「移行の進め方」）/ `basercms-plugin-5x-update`（5.x 間の更新）/ `basercms4-to-5-upgrade`（サイト全体の4→5）
 - テスト実行: `basercms-unittest`
 - プレビュー変換: `markdown-to-html`
-- プラグイン固有: `cpm-plugin-development`（Cpm の業務知識・横断移行の成果物）

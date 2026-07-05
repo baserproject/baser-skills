@@ -6,7 +6,7 @@ license: MIT
 
 # baserCMS 5系 プラグイン開発の正本パターン集
 
-baserCMS 5系（CakePHP 5ベース）で**プラグインを新規開発・改修する**ときのコーディングパターンを機能別にまとめたもの。環境・ディレクトリ構成・命名規則・コアハック禁止（`vendor/baserproject`・`vendor/cakephp` は読み取り専用）などの共通ルールは **basercms5-development**、テーマ（templates 中心）の開発は **basercms5-theme-development**、4系からの移行作業は **basercms-plugin-4-to-5-upgrade**、テストの実行・基盤導入は **basercms-unittest** を参照する。
+baserCMS 5系（CakePHP 5ベース）で**プラグインを新規開発・改修する**ときのコーディングパターンを機能別にまとめたもの。環境・ディレクトリ構成・命名規則・コアハック禁止（`vendor/baserproject`・`vendor/cakephp` は読み取り専用）などの共通ルールは **basercms5-development**、テーマ（templates 中心）の開発は **basercms5-theme-development**、4系からの移行作業は **basercms-plugin-4-to-5-upgrade**、テストの実行・基盤導入は **basercms-unittest**、bc-custom-content（カスタムコンテンツ）を使った開発は **basercms5-custom-content-development** を参照する。
 
 ## 1. 新規開発の始め方
 

@@ -1,6 +1,6 @@
 ---
 name: basercms-plugin-4-to-5-upgrade
-description: 'baserCMS 4 (CakePHP 2ベース) のプラグイン内部コードを baserCMS 5 (CakePHP 5ベース) へ移行する際の、Controller/Table/Entity/View/Helper/フォーム/Vue・JS の具体的な書き換えパターン集。「プラグインを4から5へ移行」「admin_ メソッドを Controller/Admin へ」「public $belongsTo/$hasMany を initialize() へ」「ClassRegistry/TableRegistry」「find(all/first/list, 配列) をクエリビルダへ」「$this->Model（null）を fetchTable へ」「getControlSource の単数→複数形」「$this->Form を BcAdminForm・control() へ」「検索フォーム searches/→search/」「FormHelper::create 文字列モデル→null」「FormHelper::year()/month()/domId() 廃止」「Time::format の ICU パターン」「Number::format/Text::truncate の null 不可」「配列条件の IN 自動付与なし・null は IS」「Vue/JS の admin URL を $.bcUtil.adminBaseUrl へ＋webpack 再ビルド」「$this->data / $View->request がヘルパ誤ロードを誘発」「MissingTableClassException / MissingHelperException / No context provider found」等、プラグインの画面・モデル・テンプレート・フロント表示のエラーを1つずつ潰す作業で参照する。本スキルは4系イディオムの検出と変換に絞り、5系での正しい書き方の正本は basercms5-plugin-development を参照する。サイト全体の4→5移行手順（インストール/DB移行/テーマ・プラグイン変換手順/Git運用）は basercms4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest スキルを参照。'
+description: 'baserCMS 4 (CakePHP 2ベース) のプラグイン内部コードを baserCMS 5 (CakePHP 5ベース) へ移行する際の、Controller/Table/Entity/View/Helper/フォーム/Vue・JS の具体的な書き換えパターン集。「プラグインを4から5へ移行」「admin_ メソッドを Controller/Admin へ」「public $belongsTo/$hasMany を initialize() へ」「ClassRegistry/TableRegistry」「find(all/first/list, 配列) をクエリビルダへ」「$this->Model（null）を fetchTable へ」「getControlSource の単数→複数形」「$this->Form を BcAdminForm・control() へ」「検索フォーム searches/→search/」「FormHelper::create 文字列モデル→null」「FormHelper::year()/month()/domId() 廃止」「Time::format の ICU パターン」「Number::format/Text::truncate の null 不可」「配列条件の IN 自動付与なし・null は IS」「Vue/JS の admin URL を $.bcUtil.adminBaseUrl へ＋webpack 再ビルド」「$this->data / $View->request がヘルパ誤ロードを誘発」「MissingTableClassException / MissingHelperException / No context provider found」等、プラグインの画面・モデル・テンプレート・フロント表示のエラーを1つずつ潰す作業で参照する。本スキルは4系イディオムの検出と変換に絞り、5系での正しい書き方の正本は basercms5-plugin-development を参照する。サイト全体の4→5移行手順（インストール/DB移行/テーマ・プラグイン変換手順/Git運用）は basercms4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest、ブログ等へのカスタムフィールド後付け系プラグインを bc-custom-content へ移行する場合は basercms5-custom-content-development スキルを参照。'
 license: MIT
 ---
 
@@ -9,6 +9,8 @@ license: MIT
 `BcAddonMigrator` でプラグインの雛形を5系へ変換した**後**に必要となる、手作業のコード書き換えパターンを症状別にまとめたもの。サイト全体の移行手順（baserCMS5 のインストール、`BcDbMigrator` でのデータ移行、テーマ変換、プラグインの変換手順＝ZIP化→`bc_addon_migrator`→配置、Git/リポジトリ運用）は **basercms4-to-5-upgrade** スキルを参照。本スキルはそこから呼ばれ、プラグインの Controller / Table / Entity / View / Helper / フォーム / Vue・JS を1画面ずつ通して動かすための具体策を提供する。
 
 本スキルが扱うのは**4系イディオムの検出と変換**である。**5系の正しい書き方の正本は basercms5-plugin-development**（テーマは basercms5-theme-development）であり、変換先の仕様（ORM・コントローラ・フォーム・イベント・Vue連携・日付/数値・ルーティング）に迷ったらそちらを参照する。以下の各節は「4系イディオムの検出（症状・grep パターン）→ 変換の要点 → 正本スキルの該当節」の形で読む。
+
+**ブログ記事等にカスタムフィールドを後付けする4系プラグインを5系標準の bc-custom-content へ移行する場合は、本スキルではなく basercms5-custom-content-development を参照する**（bc-custom-content は既存 blog_posts への後付けフィールド追加には使えず、独立したコンテンツ種別として作り直す設計になるため、通常のプラグイン内部コード変換とは別の専用パターン集が必要）。
 
 > **推奨: 移行に着手する前に一度 `basercms5-claude-workflow-setup`（環境セットアップ）を参照し、進め方の環境（設計=superpowers brainstorming／権限整理=permissions-audit／その上での Auto mode／spec・plan の Markdown プレビュー）を整える。提案ベースで、整っていればスキップ。下記「移行の進め方」はその環境の上で回す。**
 
@@ -27,7 +29,7 @@ license: MIT
 > **★★[運用原則] 横断作業中に「対応イベント/対応APIが5系に無い」「再設計が要る」等で無理に実装しない判断をしたら、その場でコードに `// TODO baserCMS5移行: <理由>` を残すだけでなく、必ず1の「ファイル状態台帳」にも該当行を追記・更新する**（状態を「見送り(deferred)」にし、理由と代替案の要点を一言添える）。コード内TODOだけだと後で台帳を見ても分からず、逆に台帳だけだとコードを読む人に伝わらない——**両方に書いて初めて「無理な実装をせず記録する」運用が機能する**。判断に迷ったら実装を止めてこの記録に切り替えるのが正しい（無理に動かして壊すより安全）。実例: PopularBlogPost プラグインで、CakePHP5に無い `Model.afterFind`（一覧へのランキング注入）と廃止された `bindModel`（設定の動的結合）を deferred にした際、コードのTODOコメントと `docs/migration/popular-blog-post-file-ledger.md` の両方に理由（対応イベント無し・代替手段）を記録した。
 
 ## 横断対応の原則（同一原因の散在は一括で）
-1画面の修正で見つけた不具合のうち、同じ原因がプラグイン全体に散在するものは、その場で**横断的に**一括対応する（1箇所だけ直して次画面で同じエラーに当たる、を繰り返さない）。手順: ①直したら同じパターンを `grep -rn` で全件洗い出す（例: `$this->Form->input(`、`'multiple' => 'checkbox'`、単数 `get('Cpm.Cpm...')`、`searches/`、`Time->format($x)` 第2引数なし 等）→ ②機械的に一意な変換は `perl -pi` で一括適用 → ③変更ファイルを全て `php -l` で検証 → ④非自明な箇所だけ個別対応。横断一括できる代表例は **C-0** にカタログ化（見つけ次第追記）。新しい横断パターンを見つけたら C-0 に追加してから一括実行する。
+1画面の修正で見つけた不具合のうち、同じ原因がプラグイン全体に散在するものは、その場で**横断的に**一括対応する（1箇所だけ直して次画面で同じエラーに当たる、を繰り返さない）。手順: ①直したら同じパターンを `grep -rn` で全件洗い出す（例: `$this->Form->input(`、`'multiple' => 'checkbox'`、単数 `get('Sample.Sample...')`、`searches/`、`Time->format($x)` 第2引数なし 等）→ ②機械的に一意な変換は `perl -pi` で一括適用 → ③変更ファイルを全て `php -l` で検証 → ④非自明な箇所だけ個別対応。横断一括できる代表例は **C-0** にカタログ化（見つけ次第追記）。新しい横断パターンを見つけたら C-0 に追加してから一括実行する。
 
 ## 具体的なコード変換ルール
 
@@ -101,7 +103,7 @@ license: MIT
 
 ## Table / ORM レイヤーの移行パターン（BcAddonMigrator が変換しないため手作業必須）
 
-> `BcAddonMigrator` は Model→Table のファイル移動・名前変更はするが、**クラス内の4系ORM記法はほぼ変換しない**。大規模プラグイン（例: Cpm）では1テーブル数百行がまるごと4系のまま残る。下記を機械的に潰す。**まずテーブル群のアソシエーション宣言を直す**のが全ての前提（コントローラ/ヘルパー/テンプレートが依存するため）。
+> `BcAddonMigrator` は Model→Table のファイル移動・名前変更はするが、**クラス内の4系ORM記法はほぼ変換しない**。大規模プラグイン（例: Sample）では1テーブル数百行がまるごと4系のまま残る。下記を機械的に潰す。**まずテーブル群のアソシエーション宣言を直す**のが全ての前提（コントローラ/ヘルパー/テンプレートが依存するため）。
 
 ### T-A. アソシエーション宣言（最重要・最頻出）: `public $belongsTo/$hasMany/...` → `initialize()`
 - 検出: 4系のクラスプロパティ宣言（`public $belongsTo`/`$hasMany`/`$hasAndBelongsToMany`）。5系では**完全に無視される**（エラーも出ず、ただ関連が存在しない＝`Undefined property / association` で落ちる）。
@@ -171,33 +173,33 @@ license: MIT
 - 変換: `currency($v, '<独自名>', $opts)` → `format($v, $opts)`（一括置換の正規表現は C-0 表を参照）。4系の旧オプション（誤綴り `thounsands`・`negative` 等）は無害に無視される。テンプレ側が別途通貨単位を付けている箇所はそのまま成立する。5系の数値フォーマットの正本は basercms5-plugin-development §7。
 
 ### T-運用. 大規模プラグインはテーブル層を「宣言だけ先に一括」変換すると安全
-テーブルが数十枚ある大規模プラグイン（例: Cpm は約30テーブル・7000行超）は、(1) **まず T-A〜T-D（アソシエーション/ビヘイビア/バリデーション/`$name`削除）の“宣言”だけを全テーブル一括で `initialize()`/`validationDefault()` 化**してモデル層をロード可能にし、(2) メソッド本体の `find()/query()/連鎖アクセス` 等は各行に `// TODO baserCMS5移行:` マーカーを付けて残し、後続の**画面通し工程**で実際に呼ばれた箇所だけ確実に直す、の2段構えが安全・効率的。宣言とメソッド本体を同時に直すと業務ロジックを壊しやすい。宣言変換は機械的なので、ファイル単位で並列実行（1エージェント=1テーブル、`php -l` で自己検証）すると速い。
+テーブルが数十枚ある大規模プラグイン（例: Sample は約30テーブル・7000行超）は、(1) **まず T-A〜T-D（アソシエーション/ビヘイビア/バリデーション/`$name`削除）の“宣言”だけを全テーブル一括で `initialize()`/`validationDefault()` 化**してモデル層をロード可能にし、(2) メソッド本体の `find()/query()/連鎖アクセス` 等は各行に `// TODO baserCMS5移行:` マーカーを付けて残し、後続の**画面通し工程**で実際に呼ばれた箇所だけ確実に直す、の2段構えが安全・効率的。宣言とメソッド本体を同時に直すと業務ロジックを壊しやすい。宣言変換は機械的なので、ファイル単位で並列実行（1エージェント=1テーブル、`php -l` で自己検証）すると速い。
 
 ### T-G. テーブル名プレフィックスの前提変更
-4系は `mysite_` 等のテーブルプレフィックスを使っていることがある（`SHOW TABLES` で確認）。**5系（標準インストール）はプレフィックス無し**。生SQL・`joinTable`・`setTable()` でプレフィックスをハードコードしている箇所をすべて無印に直す。データ移行で `mysite_cpm_x` → `cpm_x` のように作成する場合は [[catchup-portal-v4-to-v5-migration]] の方針に従う。
+4系は `mysite_` 等のテーブルプレフィックスを使っていることがある（`SHOW TABLES` で確認）。**5系（標準インストール）はプレフィックス無し**。生SQL・`joinTable`・`setTable()` でプレフィックスをハードコードしている箇所をすべて無印に直す。データ移行で `mysite_<plugin>_x` → `<plugin>_x` のように作成する場合も同様の方針（プレフィックス除去）に従う。
 
 ---
 
 ## Controller / 画面通し（管理画面）レイヤーの移行パターン
 
-> テーブル層の基盤（T-A〜T-G）を固めた後、画面（コントローラ＋テンプレート＋関連element＋Lib＋依存プラグイン）を1枚ずつ通して潰す工程。1画面が広範囲に波及する（実例: Cpm プロジェクト管理 index = コントローラ + テーブルの calcBalance + CpmUtil(Lib) + index_row/index_list テンプレート + Cards 依存プラグイン）。エラーをブラウザで1つずつ追って潰すのが確実。
+> テーブル層の基盤（T-A〜T-G）を固めた後、画面（コントローラ＋テンプレート＋関連element＋Lib＋依存プラグイン）を1枚ずつ通して潰す工程。1画面が広範囲に波及する（実例: Sample プロジェクト管理 index = コントローラ + テーブルの calcBalance + SampleUtil(Lib) + index_row/index_list テンプレート + 別プラグイン(SampleDep) 依存）。エラーをブラウザで1つずつ追って潰すのが確実。
 >
 > **画面結合フェーズの定石（テーブル層完了後・ドメイン単位で実証済み）**: ブラウザ手動より先に **ログイン付きコントローラ統合テスト**（`basercms-unittest` 参照）を各コントローラに1本立て、(1) GET で index/edit/add が描画200に到達することで移行漏れを自動検知 →(2) テンプレの `Form->create('Model')`文字列 / 素の `$this->Form->` / ネスト配列アクセス `$row['Model']['x']` を潰す →(3) コントローラの `passedArgs`/`recursive`/`reduceAssociations`/`find('first'|'all'|'list',配列)`/`field()`/`delete($id,true)`/単数形`$this->Model` を5系化 →(4) POST フロー（add/edit/delete・ajax確定）で DB 変化を assert。delete は全画面共通で `get($id)`→`delete($entity)`＋存在しないIDは `try/catch RecordNotFoundException` で4系の graceful 分岐（「無効な処理です。」→index）を再現。設定ビュー変数の欠落は AppController::beforeRender で横断解消（下表 `set(Configure::read(...))` の行）。**注意: 描画テストの 200 OK は `Undefined variable` 等の warning を握り潰す**ので、テスト後に `tests/TestApp/logs/error.log` を grep して pristine を確認すること。
 
 ### C-0. 機械的に一括変換できるパターン（プラグイン全体へ先行一括適用すると効率的）
-画面を1枚ずつ通す前に、**構文を壊さない・意味が一意に定まる**変換はプラグイン全体へ `perl -pi` で先に当てておくと往復が減る（各変換後に必ず `php -l` で全変更ファイルを検証）。Cpm プラグインでの実績（テンプレ＋src）:
+画面を1枚ずつ通す前に、**構文を壊さない・意味が一意に定まる**変換はプラグイン全体へ `perl -pi` で先に当てておくと往復が減る（各変換後に必ず `php -l` で全変更ファイルを検証）。Sample プラグインでの実績（テンプレ＋src）:
 | 対象 | 変換 | 備考 |
 |---|---|---|
 | `->Form->input(` | → `->Form->control(` | CakePHP5 で `input()` 廃止。ヘルパは据え置き（`$this->Form`のまま）。値バインドのため BcAdminForm に寄せるかは画面ごと判断 |
-| `->element('admin/...')` | → `->element('...')` | 5系は `templates/Admin/element/` 配下なので `admin/` 接頭辞不要。`js()/css()` の `Cpm.admin/...` アセットは触らない |
-| `getControlSource('Cpm.CpmProject.` 等の**単数**モデル | → `Cpm.CpmProjects.`（複数） | `Cpm.CpmPractice.`→`CpmPractices.`、`Cpm.CpmProduct.`→`CpmProducts.`。単数は MissingTableClass。**`control('CpmProject.field')` のフォームdataキーは単数のまま変えない**（getControlSource の第1引数だけ） |
+| `->element('admin/...')` | → `->element('...')` | 5系は `templates/Admin/element/` 配下なので `admin/` 接頭辞不要。`js()/css()` の `Sample.admin/...` アセットは触らない |
+| `getControlSource('Sample.SampleProject.` 等の**単数**モデル | → `Sample.SampleProjects.`（複数） | `Sample.SamplePractice.`→`SamplePractices.`、`Sample.SampleProduct.`→`SampleProducts.`。単数は MissingTableClass。**`control('SampleProject.field')` のフォームdataキーは単数のまま変えない**（getControlSource の第1引数だけ） |
 | `currency($v, 'yen', $opts)` | → `format($v, $opts)` | `Number::addFormat` 廃止。正規表現は値内の `()` を含むため `->currency\((.*?),\s*'yen'(\s*,\s*\[[^\]]*\])?\s*\)`→`->format($1$2)` |
 | `getRequest()->action` | → `getRequest()->getParam('action')` | マジックプロパティ廃止 |
 | `getRequest()->query`（配列用途） | → `getRequest()->getQueryParams()` | 単一キーは `getQuery('k')`。**getterへの代入** `getQuery('x') = ...` は別途 `withQueryParams()` 化（Fatal） |
-| 検索フォーム `searches/`（複数） | → `search/`（単数）へ**移動** | setSearch が読むのは `search/`。**移動だけでなく中身も横断変換**: `$this->Form->`→`$this->BcAdminForm->`（`CpmForm`/`BcAdminForm` は対象外）、`create('Model', [...])`→`create(null, [...])`。重複（移行済み）ファイルは破棄 |
+| 検索フォーム `searches/`（複数） | → `search/`（単数）へ**移動** | setSearch が読むのは `search/`。**移動だけでなく中身も横断変換**: `$this->Form->`→`$this->BcAdminForm->`（`SampleForm`/`BcAdminForm` は対象外）、`create('Model', [...])`→`create(null, [...])`。重複（移行済み）ファイルは破棄 |
 | `Time->format($x)`（第2引数なし／`'Y-m-d'`） | → `Time->format($x, 'yyyy-MM-dd')` | 第2引数省略は**日時**表示（`2026-01-01 00:00:00`）。日付のみは ICU `'yyyy-MM-dd'`（PHP date形式ではない）。`Time->format\(([^,)]+)\)`→`Time->format($1, 'yyyy-MM-dd')` |
 | `control(['type'=>'select','multiple'=>'checkbox',...])` | → checkbox ループ（C-G参照） | baser5 で崩れる（空select/`< class="">`）。`grep -rn "'multiple' => 'checkbox'"` で全件洗い、options をループして `control('field[]', type=checkbox)` に。値（OPTS）が箇所毎に異なるので一括 perl ではなく個別 Edit 推奨 |
-| 単数テーブル `get('Cpm.Cpm<単数>')`（src/ヘルパ含む） | → 複数形 `get('Cpm.Cpm<単数>s')` | Helper/Table/Controller 全 src。`grep -rnE "get\('(Cpm\|Cards)\.[A-Za-z]+[^s']'\)"` |
+| 単数テーブル `get('Sample.Sample<単数>')`（src/ヘルパ含む） | → 複数形 `get('Sample.Sample<単数>s')` | Helper/Table/Controller 全 src。`grep -rnE "get\('(Sample\|SampleDep)\.[A-Za-z]+[^s']'\)"` |
 | `$this->Form->create('Model', ...)`（文字列モデル） | → `$this->BcAdminForm->create(null, [..., 'valueSources'=>['data','context']])` | フォーム/編集テンプレ全般。文字列モデルは `No context provider found for value of type string`（CakeException）。`create\('[A-Za-z]+',`→`create(null,`。`$this->Form->`→`$this->BcAdminForm->` も併せて |
 | `$this->action`（テンプレ）／`'admin_xxx'` | → `$this->getRequest()->getParam('action')`／`'xxx'` | View の `$this->action` 廃止。5系は prefix=Admin で **action名に `admin_` は付かない**（`admin_add`→`add`、`admin_index`→`index`）。getControlSource の mode 判定や create の action分岐に影響 |
 | `$this->BcAuth->user()` | → `\BaserCore\Utility\BcUtil::loginUser()` | 戻りは `UserInterface\|false`（**未ログイン時は `null` ではなく `false`**）。**`?->` は `false` に効かない**ため `BcUtil::loginUser()?->id` は未ログイン時に `Attempt to read property "id" on bool` 警告＋null になる（テスト実行時に顕在化）。堅牢形は `(\BaserCore\Utility\BcUtil::loginUser() ?: null)?->id`（`false ?: null`→null→`null?->id`）か明示分岐 `$u = BcUtil::loginUser(); $u ? $u->id : null;`。`$user['id']` 等の配列アクセスはエンティティ参照へ |
@@ -206,7 +208,7 @@ license: MIT
 | `$this->Form->year('Model.field', ...)` / `->month(...)` | → `control('Model.field.year', ['type'=>'select','options'=>$years,'label'=>false])` 等 | **`FormHelper::year()/month()` は CakePHP5 で廃止**。`$years`/`$months` をテンプレ冒頭で自前生成。`getData('Model.field')` は `['year'=>,'month'=>]` で受かる |
 | `$this->postConditions($data)`（コントローラ） | → 検索条件を明示的に組み立て | **`Controller::postConditions()` は5系廃止**。`Call to undefined method`。`if(!empty($d['Model']['x'])) $conditions['Models.x']=...` を手書き |
 | `$this->redirect(...)` に `return` が無い（コントローラ） | → `return $this->redirect(...)` | **4系の redirect は exit したが5系は Response を返すだけで後続コードが実行され続ける**。ガード節（引数チェック→リダイレクト）が効かず、直後の処理で TypeError（null 引数）等になる。`perl -pi -e 's/^(\s+)\$this->redirect\(/$1return \$this->redirect(/'` で一括。★例外: `initialize()`/`beforeFilter()` 等 **`: void` 宣言メソッド内は return すると TypeError** になるため、一括後に void メソッド内に混入していないか確認する |
-| `$this->set(Configure::read('Cpm'))` の欠落 | → **プラグイン Admin AppController の `beforeRender()` で1回 set ＋ 各コントローラがそれを継承** | テンプレが参照する設定ビュー変数（`$billingStatuses`/`$taxRateList`/`$saleTypes`/`$estimateTypes` 等）の `Undefined variable`。4系は **プラグイン AppController::beforeRender が全画面に自動 set** していた。★5系の落とし穴: `bin/cake bake` 由来や手移植の Admin コントローラは **`BaserCore\Controller\Admin\BcAdminAppController` を直継承**しがちで、プラグインの `CpmAppController`（=4系の set を持つべき層）を経由しない→設定ビュー変数が全画面で欠落。**正しい直し方は per-action set ではなく、`src/Controller/Admin/CpmAppController.php` に `public function beforeRender(EventInterface $event): void { parent::beforeRender($event); $this->set(\Cake\Core\Configure::read('Cpm')); }` を置き、各 Admin コントローラを `extends CpmAppController` にする**（per-action の重複 set は削除）。横断的に一発で解消できる。`Configure::read('Cpm')` の値自体は `BcPlugin::bootstrap()`/`config/setting.php` で load 済みか確認（未 load なら C-D で復元） |
+| `$this->set(Configure::read('Sample'))` の欠落 | → **プラグイン Admin AppController の `beforeRender()` で1回 set ＋ 各コントローラがそれを継承** | テンプレが参照する設定ビュー変数（`$billingStatuses`/`$taxRateList`/`$saleTypes`/`$estimateTypes` 等）の `Undefined variable`。4系は **プラグイン AppController::beforeRender が全画面に自動 set** していた。★5系の落とし穴: `bin/cake bake` 由来や手移植の Admin コントローラは **`BaserCore\Controller\Admin\BcAdminAppController` を直継承**しがちで、プラグインの `SampleAppController`（=4系の set を持つべき層）を経由しない→設定ビュー変数が全画面で欠落。**正しい直し方は per-action set ではなく、`src/Controller/Admin/SampleAppController.php` に `public function beforeRender(EventInterface $event): void { parent::beforeRender($event); $this->set(\Cake\Core\Configure::read('Sample')); }` を置き、各 Admin コントローラを `extends SampleAppController` にする**（per-action の重複 set は削除）。横断的に一発で解消できる。`Configure::read('Sample')` の値自体は `BcPlugin::bootstrap()`/`config/setting.php` で load 済みか確認（未 load なら C-D で復元） |
 
 注意: `'div'`/`'between'`/`'after'` 等 input 専用の旧オプションは control では HTML属性に漏れることがあるが Fatal にはならない（画面通し時に個別清掃）。`searches/`→`search/`（C-G）はディレクトリ移動＋各フォームの他4系記法も伴うので一括ではなく画面ごとに行う。
 
@@ -253,8 +255,8 @@ license: MIT
 
 ### C-D. setting.php の欠落（設定キー＝Division by zero／adminNavigation＝メニュー/UI変化）
 `BcAddonMigrator` での変換や、その後の「配列の整理」作業で、`config/setting.php` の内容が**間引かれる**ことがある。2系統に注意し、必ず4系 `Config/setting.php` と照合して復元する:
-- **設定キーの欠落**: コードが参照するキー（例 `Cpm.operatingDays`/`productTypes`/`practiceTypes`/`monthlyUnitPricePartner`/`mitsumoriKessai`）が無いと `Division by zero`・`array_merge(): Argument #2 must be of type array, null given`・未定義参照になる。**画面ごとに1つずつ潰さず、横断的に洗い出す**: 参照キー `grep -rohE "Configure::read\('Cpm\.[a-zA-Z0-9_]+" templates/ src/ | sed "s/.*Cpm\.//" | sort -u` と 定義キー `grep -oE "'[a-zA-Z0-9_]+'\s*=>" config/setting.php | …` を `comm -23` で突合し、未定義キーを4系 `Config/setting.php` から一括復元する。
-- **adminNavigation（管理メニュー）の欠落・改変**: メニュー項目が落ちる/直リンク化されると**4系と管理画面のメニュー構成（UI）が変わる**。例: 4系は「分析」メニュー（`cpm_menus/analysis`、`currentRegex` で `cpm_aggregate`/`cpm_units` 等を内包）から集計へ遷移する仕様なのに、変換後 setting.php では「集計」が直リンク化され「分析」や他メニュー（経理/工数管理/マスター等）が消えている、等。**UI を勝手に変えない**方針なら、adminNavigation も4系と突き合わせて元の構成に戻す（メニューのURLは4系の小文字表記 `'controller' => 'cpm_projects'` のままで baserCMS5 admin が解決する）。未移行画面へのリンクは押すとエラーになるが、画面移行を進めるにつれ解消する。
+- **設定キーの欠落**: コードが参照するキー（例 `Sample.operatingDays`/`productTypes`/`practiceTypes`/`monthlyUnitPricePartner`/`mitsumoriKessai`）が無いと `Division by zero`・`array_merge(): Argument #2 must be of type array, null given`・未定義参照になる。**画面ごとに1つずつ潰さず、横断的に洗い出す**: 参照キー `grep -rohE "Configure::read\('Sample\.[a-zA-Z0-9_]+" templates/ src/ | sed "s/.*Sample\.//" | sort -u` と 定義キー `grep -oE "'[a-zA-Z0-9_]+'\s*=>" config/setting.php | …` を `comm -23` で突合し、未定義キーを4系 `Config/setting.php` から一括復元する。
+- **adminNavigation（管理メニュー）の欠落・改変**: メニュー項目が落ちる/直リンク化されると**4系と管理画面のメニュー構成（UI）が変わる**。例: 4系は「分析」メニュー（`sample_menus/analysis`、`currentRegex` で `sample_aggregate`/`sample_units` 等を内包）から集計へ遷移する仕様なのに、変換後 setting.php では「集計」が直リンク化され「分析」や他メニュー（経理/工数管理/マスター等）が消えている、等。**UI を勝手に変えない**方針なら、adminNavigation も4系と突き合わせて元の構成に戻す（メニューのURLは4系の小文字表記 `'controller' => 'sample_projects'` のままで baserCMS5 admin が解決する）。未移行画面へのリンクは押すとエラーになるが、画面移行を進めるにつれ解消する。
 - **★4系 setting.php が「実行型」（ロード時に DB や他プラグインのクラスへアクセスして値を組み立てる）の場合、5系の `return 配列` へ単純変換できない**——検出: setting.php 内の `ClassRegistry`/モデル呼び出し/他プラグインの Util クラス参照。変換: **静的な設定は setting.php の return 配列、動的な組み立ては `<Plugin>Plugin::bootstrap()`（try/catch ガード付き）へ分離**する（正本: basercms5-plugin-development §1「新規開発の始め方」）。
 
 ### C-F. Vue/JS から叩く ajax は戻り値を Response にし、URL を5系管理パスへ
@@ -309,7 +311,7 @@ license: MIT
 - **【最重要の落とし穴】`getParam('controller')`/`params['controller']` は CamelCase**: 4系変換残りの snake_case 比較（`=== '<snake_case名>'`）は**常に false** になり、一覧 element がフォーム埋め込み側の分岐に落ちて、**画面はエラーなく開くのにデータが出ない**（合計だけ出てリストが空、等）→ CamelCase 比較へ。`grep -rn "=== '<plugin接頭辞>_" templates` で全件洗う。
 
 ### C-E. 依存プラグインも芋づる式に必要
-`contain()` する関連の所属プラグイン（例 Cpm→Cards）が無効だと `Table class for alias 'Cards.CardsCompanies' could not be found`。**依存プラグインを有効化（status=1）し、テーブルを4系から作成**する（[[catchup-portal-v4-to-v5-migration]] 参照）。依存プラグイン側のイベントリスナー等が未移行だと warning が出るが、対象画面の表示自体は止まらないことが多い（依存プラグイン本体の移行時に対応）。
+`contain()` する関連の所属プラグイン（例 `<PluginA>`→`<PluginB>`）が無効だと `Table class for alias '<PluginB>.<PluginB>Xxx' could not be found`。**依存プラグインを有効化（status=1）し、テーブルを4系から作成**する。依存プラグイン側のイベントリスナー等が未移行だと warning が出るが、対象画面の表示自体は止まらないことが多い（依存プラグイン本体の移行時に対応）。
 
 ## フロント表示エラーの実例パターン（症状 → 原因 → 修正）
 
@@ -333,7 +335,7 @@ license: MIT
     *   `getEnablePlugins()`（グローバル関数）→ `\BaserCore\Utility\BcUtil::getEnablePlugins()`。戻り値は **Plugin エンティティの配列**なので、`Hash::extract($plugins, '{n}.name')` で名称を取り出す（4系の `'{n}.Plugin.name'` ではない）。
 
 ### F-10. ショートコードが実行されず `[Plugin.method ...]` の生テキストのまま残る
-ショートコードは各プラグインの `config/setting.php` の `'BcShortCode' => [...]` で登録されるが、**プラグインが無効（plugins.status=0）だと setting.php が読み込まれず未登録**になる。BcShortCode は未登録のショートコードを**エラーを出さずそのまま生テキストで出力**するため、画面に `[CatchupPortal.showSearchBox]` `[Cpm.unitChart]` 等が露出する。
+ショートコードは各プラグインの `config/setting.php` の `'BcShortCode' => [...]` で登録されるが、**プラグインが無効（plugins.status=0）だと setting.php が読み込まれず未登録**になる。BcShortCode は未登録のショートコードを**エラーを出さずそのまま生テキストで出力**するため、画面に `[<Plugin>.methodName]` 等が露出する。
 - **判別**: 露出しているショートコードの接頭辞（`[Plugin.xxx]` の Plugin 部分）のプラグインの status を確認。
 - **修正**: 当該プラグインを移行・有効化する（F-5参照）。未移行のうちは生テキストのまま残るのは想定どおり。
 

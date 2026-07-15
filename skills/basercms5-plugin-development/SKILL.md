@@ -29,6 +29,8 @@ baserCMS 5系（CakePHP 5ベース）で**プラグインを新規開発・改�
   ];
   ```
 - **adminNavigation（管理メニュー）**は setting.php に登録する。`'plugin'`・`'controller'` は**いずれも CamelCase** で書く（`'controller' => 'SampleArticles'`）。snake_case で書くと**全管理画面が404になる**（メニュー描画時のURL解決に失敗するため対象画面以外も巻き込む）。
+- **管理画面URLの `{controller}` セグメントは実際にはプラグイン名をダッシュ区切り（kebab-case）にしたもの**（例: `BlogTagGroup` → `/baser/admin/blog-tag-group/{controller}/...`）。他プラグインのURLパターンから類推せず、`bin/cake routes | grep <PluginName>`（大文字小文字を落として検索）で実際のルートを確認してから使う。
+- **BcBlog（`bc-blog`）の管理画面「記事編集」URLは `edit/{blogContentId}/{id}` の2引数が必須**（`Admin\BlogPostsController::beforeFilter()` が `$this->request->getParam('pass.0')` を**ブログコンテンツID**として要求し、無いと `BcException: コンテンツデータが見つかりません。` になる）。記事IDだけの `edit/{id}` ではアクセスできない。他プラグインが特定ブログ記事の編集画面へリンクを張る場合（例: 追加フィールドプラグインの編集導線）は、`edit($blogContentId, $id)` のシグネチャ通り両方を渡す。
 - **有効化**は管理画面のプラグイン管理から行うか、`plugins` テーブルへ直接 INSERT（`status=1`）する。DBで有効化されたプラグインは自動で読み込まれるため、composer への登録や `composer dump-autoload` は不要。
 - サードパーティ製ライブラリ（例 `phpoffice/phpspreadsheet`）は `composer require` で導入する。雛形アセット（Excel テンプレート等）は `templates/Admin/Excel/...` に置き、`\Cake\Core\Plugin::templatePath('Sample') . 'Admin' . DS . 'Excel' . DS . ...` で参照する（`templatePath()` は末尾スラッシュ付き）。
 

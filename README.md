@@ -20,6 +20,7 @@ baserCMS / CakePHP / PHP の開発・移行で使う **Agent Skills** を共有�
 | [`basercms-core-plugin-convert`](skills/basercms-core-plugin-convert/SKILL.md) | 通常プラグイン（単体配布）を monorepo の「コアプラグイン」へ昇格させる手順（命名規約変更・テスト基盤統合・各種登録・split 確認まで） |
 | [`basercms-unittest`](skills/basercms-unittest/SKILL.md) | baserCMS（CakePHP5 / PHPUnit）のユニットテストをローカル Docker で実行・調査する手順 |
 | [`basercms-security-advisory`](skills/basercms-security-advisory/SKILL.md) | セキュリティアドバイザリ（GHSA/triage）対応を一覧取得→検証→修正→フォーク/ブランチ/PR作成→ローカル検証まで一気通貫で扱う手順とスクリプト集 |
+| [`basercms-release-note`](skills/basercms-release-note/SKILL.md) | baserCMS の `plugins/baser-core/VERSION.txt` にリリース分の変更履歴（NEW/CHG/BUG）をコミットログから生成して追記する手順 |
 | [`cakephp-migration`](skills/cakephp-migration/SKILL.md) | CakePHP バージョンアップ（5.0 → 5.1 → 5.2 〜）の非推奨・破壊的変更パターン集と修正レシピ |
 | [`php-migration`](skills/php-migration/SKILL.md) | PHP バージョンアップ（8.2 / 8.4 / 8.5 〜）の非推奨・破壊的変更対応レシピ |
 

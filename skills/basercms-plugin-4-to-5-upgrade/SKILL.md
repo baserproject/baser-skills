@@ -1,6 +1,6 @@
 ---
 name: basercms-plugin-4-to-5-upgrade
-description: 'baserCMS 4 (CakePHP 2ベース) のプラグイン内部コードを baserCMS 5 (CakePHP 5ベース) へ移行する際の、Controller/Table/Entity/View/Helper/フォーム/Vue・JS の具体的な書き換えパターン集。「プラグインを4から5へ移行」「admin_ メソッドを Controller/Admin へ」「public $belongsTo/$hasMany を initialize() へ」「ClassRegistry/TableRegistry」「find(all/first/list, 配列) をクエリビルダへ」「$this->Model（null）を fetchTable へ」「getControlSource の単数→複数形」「$this->Form を BcAdminForm・control() へ」「検索フォーム searches/→search/」「FormHelper::create 文字列モデル→null」「FormHelper::year()/month()/domId() 廃止」「Time::format の ICU パターン」「Number::format/Text::truncate の null 不可」「配列条件の IN 自動付与なし・null は IS」「Vue/JS の admin URL を $.bcUtil.adminBaseUrl へ＋webpack 再ビルド」「$this->data / $View->request がヘルパ誤ロードを誘発」「MissingTableClassException / MissingHelperException / No context provider found」「App::importでVendor同梱した外部ライブラリ(leafo/scssphp等)が5系に移植されておらず機能が死ぬ」「PHP8で削除されたeach()や正規表現の不正エスケープ等、古い同梱ライブラリのPHP8非互換」等、プラグインの画面・モデル・テンプレート・フロント表示のエラーを1つずつ潰す作業で参照する。本スキルは4系イディオムの検出と変換に絞り、5系での正しい書き方の正本は basercms5-plugin-development を参照する。サイト全体の4→5移行手順（インストール/DB移行/テーマ・プラグイン変換手順/Git運用）は basercms4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest、ブログ等へのカスタムフィールド後付け系プラグインを bc-custom-content へ移行する場合は basercms5-custom-content-development スキルを参照。'
+description: 'baserCMS 4 (CakePHP 2ベース) のプラグイン内部コードを baserCMS 5 (CakePHP 5ベース) へ移行する際の、Controller/Table/Entity/View/Helper/フォーム/Vue・JS の具体的な書き換えパターン集。「プラグインを4から5へ移行」「admin_ メソッドを Controller/Admin へ」「public $belongsTo/$hasMany を initialize() へ」「ClassRegistry/TableRegistry」「4系の var $name/$uses/$helpers が型宣言と衝突して Fatal」「beforeFilter のシグネチャ不一致」「custom など複数DB接続を default へ寄せる」「Config/Schema を持たないプラグインのテーブルはバックアップに入らない」「find(all/first/list, 配列) をクエリビルダへ」「$this->Model（null）を fetchTable へ」「getControlSource の単数→複数形」「$this->Form を BcAdminForm・control() へ」「検索フォーム searches/→search/」「FormHelper::create 文字列モデル→null」「FormHelper::year()/month()/domId() 廃止」「Time::format の ICU パターン」「Number::format/Text::truncate の null 不可」「配列条件の IN 自動付与なし・null は IS」「Vue/JS の admin URL を $.bcUtil.adminBaseUrl へ＋webpack 再ビルド」「$this->data / $View->request がヘルパ誤ロードを誘発」「MissingTableClassException / MissingHelperException / No context provider found」「App::importでVendor同梱した外部ライブラリ(leafo/scssphp等)が5系に移植されておらず機能が死ぬ」「PHP8で削除されたeach()や正規表現の不正エスケープ等、古い同梱ライブラリのPHP8非互換」等、プラグインの画面・モデル・テンプレート・フロント表示のエラーを1つずつ潰す作業で参照する。本スキルは4系イディオムの検出と変換に絞り、5系での正しい書き方の正本は basercms5-plugin-development を参照する。サイト全体の4→5移行手順（インストール/DB移行/テーマ・プラグイン変換手順/Git運用）は basercms4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest、ブログ等へのカスタムフィールド後付け系プラグインを bc-custom-content へ移行する場合は basercms5-custom-content-development スキルを参照。'
 license: MIT
 ---
 
@@ -362,3 +362,43 @@ CakePHP2時代は composer が一般的でなく、外部ライブラリ（例: 
 
 ## テーマ（Theme）の移行パターン（別スキル）
 テーマ（templates/layout・element・Blog/Pages/Mail テンプレート）固有の移行パターン（TH-系）と、フロント表示エラーのうちテンプレート・テーマ描画系のパターン（F-1〜F-5, F-9, F-11〜F-17, F-19, F-20）は **basercms-theme-4-to-5-upgrade** スキルに分割した。テーマの作業ではそちらを参照すること。
+
+## C-P. 4系のコントローラ／ヘルパのプロパティは「消す」— 残すと型宣言の衝突で Fatal（実証済み）
+
+CakePHP 5 の親クラスは主要プロパティに**型宣言**を持つため、4系の `var $xxx` / `public $xxx` を残したままにすると **`php -l` は通るのにリクエスト時に Fatal Error** になる。しかも `ErrorHandlerMiddleware` が拾えず「HTTPステータスは200なのに本文がエラーページ」という紛らわしい形で出ることがあるので、**ステータスコードだけでの正常判定は危険**（`grep -c 'Fatal error'` も併せて見ること）。
+
+- 症状の例:
+  - `Type of <Plugin>\Controller\XxxController::$name must be string (as in class Cake\Controller\Controller)`
+  - `Type of <Plugin>\View\Helper\XxxHelper::$helpers must be array (as in class Cake\View\Helper)`
+- **対処: 下記は原則すべて削除する**（5系では別の仕組みに置き換わっており、宣言する意味が無い）。
+  `$name` / `$uses` / `$helpers` / `$components` / `$subMenuElements` / `$crumbs` / `$subContentsTitle` / `$pageTitle` / `$actsAs` / `$mainteTableName`
+  - `$uses` → コントローラでは `fetchTable('<Plugin>.<Tables>')`
+  - `$helpers` → `viewBuilder()->addHelper()`（ヘルパー内でどうしても必要なら `protected array $helpers = [...]` と**型付きで**宣言し、参照名も `BaserCore.BcBaser` のようにプラグイン修飾する）
+  - `$actsAs` → Table の `initialize()` で `addBehavior()`
+- 一括除去は、docコメント付きの宣言ごと消すと差分がきれいになる:
+  ```
+  ^[ \t]*(?:/\*\*(?:[^*]|\*(?!/))*\*/[ \t]*\n)?[ \t]*(?:var|public|protected)[ \t]+\$(name|uses|helpers|components|subMenuElements|crumbs|subContentsTitle|pageTitle|actsAs|mainteTableName)\b[^;]*;[ \t]*\n
+  ```
+
+### C-P2. `beforeFilter()` のシグネチャ不一致も同じ形で Fatal になる
+- `Declaration of <Plugin>\Controller\XxxController::beforeFilter() must be compatible with BaserCore\Controller\BcFrontAppController::beforeFilter(Cake\Event\EventInterface $event)`
+- `function beforeFilter()` → `public function beforeFilter(\Cake\Event\EventInterface $event)`。`BcAddonMigrator` は `parent::beforeFilter($event);` という**引数だけ5系化された壊れた呼び出し**を残すことがある（`$event` が未定義になる）ので、シグネチャとセットで直す。
+- 中の `$this->BcAuth->allow(...)` は5系に `BcAuth` コンポーネントが無いので削除してよい（フロントの公開ページは既定で認証不要）。
+
+## C-Q. `custom` など複数DB接続は「同一DB・prefix違い」なら default に寄せる（実証済み）
+
+4系で `$useDbConfig = 'custom'` を使っていても、`database.php` を読むと **DB名・ホスト・ユーザーは同じで prefix だけ違う**、というだけのことが多い。この場合5系で接続を分ける実利はゼロで、むしろ分けると baserCMS のバックアップ／復元系（`BcDatabaseService::getAppTableList()` は1接続しか列挙しない）から外れて不利になる。
+
+- **対処**: default 接続に寄せ、**テーブル名側にプレフィックスの差分を持たせる**。
+  `Datasources.default.prefix = 'mysite_'` のまま `$this->setTable('ct_works')` とすれば物理名 `mysite_ct_works` に一致する。モデルの `var $useDbConfig` は削除。
+- **バックアップ zip には入る**: `custom` が同一DBなら `listSources()` が拾うため、4系のバックアップにも `CtWorksSchema.php` / `ct_works.csv` が含まれ、BcDbMigrator を素通りして default 接続へ復元される。事前に `unzip -l <backup>.zip | grep -i ct_` で確認しておく。
+- **Migrations のファイル名規約に注意**: `BcDatabaseService::getAppTableList()` は `config/Migrations/*_Create<Name>.php` というファイル名から `Inflector::tableize()` でテーブル名を逆算する。`<ts>_CreateCtWorks.php` のように**実テーブル名に一致させる**と、移行後の v5 バックアップにも独自テーブルが含まれるようになる。
+- **belongsToMany は `through` で中間テーブルを明示する**。省略すると結合テーブルのエイリアスが**プレフィックス込み**（例 `MysiteCtCompaniesWorks`）になり、`'sort' => ['CtCompaniesWorks.sort' => 'ASC']` が `Unknown column 'CtCompaniesWorks.sort' in 'order clause'` で解決できない。
+
+## C-R. `Config/Schema` を持たないプラグインのテーブルは4系バックアップに入らない（実証済み）
+
+4系のバックアップ（`ToolsController::_writeBackup()`）は、**`Config/Schema/<table>.php` があるテーブルだけ**を対象にする。モデルクラスすら持たず CakePHP2 の自動 AppModel に頼っていたプラグインは Schema も無いため、**そのプラグインのテーブルはバックアップ zip に一切含まれない**（気付かないと移行後に「データが消えた」ことになる）。
+
+- 事前確認: `ls app/Plugin/*/Config/Schema` で Schema を持たないプラグインを洗い出し、そのテーブルを `unzip -l <backup>.zip` に無いことと突き合わせる。
+- **対処**: 対象テーブルだけ `mysqldump` で別途取得し、5系側で Migrations を流してテーブルを作った**後**に `--no-create-info` の INSERT を流す。
+- 併せて、そういうプラグインは5系で **Table クラスを新規に書き起こす**必要がある（4系に無かったので変換元が存在しない）。

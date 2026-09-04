@@ -1,6 +1,6 @@
 ---
 name: basercms-theme-4-to-5-upgrade
-description: 'baserCMS 4 のテーマ（templates/layout・element・Blog/Pages/Mail テンプレート＋少数の Helper で構成）を baserCMS 5 のテーマプラグインへ移行する際のパターン集。「テーマを4から5へ移行」「BcAddonMigrator でテーマ変換後の手修正」「siteConfig[] 廃止」「fullUrl() 廃止」「blogPosts() 等ショートカットメソッドの実在確認」「メールフォームテンプレートの移行（Mailform→BcBaser mailForm系）」「ウィジェット element の widgets→widget」「ビュー変数が空」「params[Content] 廃止」「css()/js() の inline 第2引数化」「アイキャッチ画像404」「サブディレクトリ設置でURLの base が欠ける」等で参照する。テーマ固有の移行パターン（TH-系）と、フロント表示エラーのうちテンプレート・テーマ描画系の実例パターン（F-系）を収録。本スキルは4系イディオムの検出と変換に絞り、5系テーマの正しい書き方の正本は basercms5-theme-development を参照する。プラグイン内部コード（Controller/Table/Entity/管理画面）は basercms-plugin-4-to-5-upgrade、サイト全体の手順は basercms4-to-5-upgrade、テスト実行は basercms-unittest スキルを参照。'
+description: 'baserCMS 4 のテーマ（templates/layout・element・Blog/Pages/Mail テンプレート＋少数の Helper で構成）を baserCMS 5 のテーマプラグインへ移行する際のパターン集。「テーマを4から5へ移行」「BcAddonMigrator でテーマ変換後の手修正」「siteConfig[] 廃止」「fullUrl() 廃止」「blogPosts() 等ショートカットメソッドの実在確認」「メールフォームテンプレートの移行（Mailform→BcBaser mailForm系）」「ウィジェット element の widgets→widget」「ビュー変数が空」「params[Content] 廃止」「css()/js() の inline 第2引数化」「pageTitleHelper could not be found」「BcPage->content() 廃止」「固定ページテンプレートが Pages/templates/ にあって Missing Template」「getBlogs() 廃止」「BlogCategory 配列アクセス」「BcUpload の setTable / BcUploadBehavior 未設定」「アイキャッチ画像404」「サブディレクトリ設置でURLの base が欠ける」等で参照する。テーマ固有の移行パターン（TH-系）と、フロント表示エラーのうちテンプレート・テーマ描画系の実例パターン（F-系）を収録。本スキルは4系イディオムの検出と変換に絞り、5系テーマの正しい書き方の正本は basercms5-theme-development を参照する。プラグイン内部コード（Controller/Table/Entity/管理画面）は basercms-plugin-4-to-5-upgrade、サイト全体の手順は basercms4-to-5-upgrade、テスト実行は basercms-unittest スキルを参照。'
 license: MIT
 ---
 
@@ -129,3 +129,31 @@ license: MIT
 - 検出: 特定のブロックや一覧カードが「スクロールするまで表示されない」「レイアウトが崩れる」といった症状は、直感的には共通JS（アニメーション制御等）やCSSの不具合に見えるが、**5系移行時にテンプレートへ本番には存在しないCSSクラス（`fadeinAnime`/`sideinAnime`等のアニメーション系クラスが典型）が誤って付与されている**ことが真因のことがある。共通JS/CSS側は4系オリジナルと同一仕様で、それ自体は不具合ではないケースがある。
 - **判別手順（共通JS/CSSを疑う前に必ず行う）**: 本番サイトの実際のHTMLソース（DevTools の要素パネル、または `view-source:`）で該当要素のclass属性を確認し、ローカル/v5側のテンプレートに書かれているclassと突き合わせる。本番に無いclassがローカルにだけ付いていれば、それがテンプレート側の余計な追加であり、共通JS/CSSを変更せずテンプレートから削除するだけで直る（影響範囲が最小）。
 - **★罠: `WebFetch` ツールで本番HTMLを確認しようとしない**。`WebFetch` は取得したHTMLを**Markdownへ変換してから**小型モデルに渡す実装のため、`class`属性を含む大半のHTML属性がこの変換で失われる。「該当クラスは存在しない」という`WebFetch`の回答は偽陰性になりうる（実例: 一度誤った「存在しません」という結果を信じかけ、後にDevToolsのスクリーンショットと`view-source:`の実ソースで確認して訂正した）。class属性の有無を確認したいときは、`curl`（許可されていれば）でHTML生ソースを取得するか、ユーザーにDevTools/`view-source:`のスクリーンショットを依頼する。
+
+### F-24. `View::$pageTitle` は5系に無く、未定義プロパティが「ヘルパー名」として解決されて500になる
+- 検出: `Missing Helper` の本文に **`BaserCore.pageTitleHelper` could not be found** と出る。「そんなヘルパーは書いていない」ので原因を見失いやすいが、**`$this->pageTitle` / `$this->_View->pageTitle` を読んだ結果**である（`View::__get()` が未定義プロパティをヘルパーとして解決しにいくため、プロパティ名 + `Helper` という存在しないクラスを探して落ちる）。
+- 検出コマンド: `grep -rn '\$this->pageTitle\|->_View->pageTitle' templates/ src/`
+- 変換: 取得は `$this->BcBaser->getTitle()`、設定は `$this->BcBaser->setTitle(...)`。
+- **★`BcAddonMigrator` はコントローラ内の `$this->pageTitle` しか変換しない**ため、テンプレート・レイアウト・テーマ Helper に必ず残る。移行直後に全件 grep して潰すこと。
+
+### F-25. `BcPageHelper::content()` は5系に無い → `echo $page->contents`
+- 検出: `Call to undefined method BaserCore\View\Helper\BcPageHelper::content()`。4系の固定ページテンプレート（`Pages/*.php`）はほぼ全てこれで本文を出力している。
+- 変換: `<?php $this->BcPage->content(); ?>` → `<?php echo $page->contents ?>`（コア `bc-front/templates/Pages/default.php` と同じ書き方）。
+
+### F-26. 固定ページテンプレートは `templates/Pages/` 直下に置く（`Pages/templates/` ではない）
+- 検出: 固定ページが `Missing Template` になり、探索パスの一覧に `templates/Pages/<name>.php` が並ぶ。
+- 原因: 4系テーマは `Pages/templates/<name>.php` という一段深い構成のことがあり、`BcAddonMigrator` はその階層をそのまま `templates/Pages/templates/` へ移すため5系の探索パスから外れる。
+- 変換: `templates/Pages/templates/*.php` → `templates/Pages/` 直下へ移動。
+
+### F-27. `BcBaser->getBlogs()` は5系に存在しない
+- 検出: `$this->BcBaser->getBlogs(<id>)` が null を返し、その戻り値を使った `blogPosts()` が `$contentsName を省略時は、contentsTemplate オプションで…` という**一見無関係な例外**で落ちる。
+- 変換: `blogPosts()` の第1引数には対象ブログのURL（`'/news/'` 等）を直接渡す。ブログのURLは `SELECT bc.id, c.url FROM <prefix>blog_contents bc JOIN <prefix>contents c ON c.entity_id=bc.id AND c.type='BlogContent'` で確認できる。
+
+### F-28. ブログ記事のカテゴリは `$post['BlogCategory']` ではなくエンティティのアソシエーション
+- 検出: 一覧テンプレートで `Trying to access array offset on null`。
+- 変換: `$post['BlogCategory']['no']` → `$post->blog_category->no`。**カテゴリ未設定の記事があるので必ず `!empty($post->blog_category)` で守る**（4系は配列アクセスで警告止まりだったが、5系でも Warning が出て描画HTMLに混入する）。
+
+### F-29. `BcUploadHelper` は使う前に対象テーブルの設定が要る／テーブル側に BcUpload ビヘイビアが要る
+- 症状は2段階で出る。F-22（第2引数エンティティ化）を直した後に続けて出るので、セットで覚える。
+  1. `BcUploadHelper を利用するには、$this->BcUpload->setTable() か …` → テンプレートの冒頭で `$this->BcUpload->setTable('<Plugin>.<Tables>');`（または `$this->BcBaser->setTableToUpload(...)`）を呼ぶ。
+  2. `BcUploadHelper を利用するには、テーブル <...>Table で BcUploadBehavior の利用設定が必要です。` → Table の `initialize()` に `$this->addBehavior('BaserCore.BcUpload', [...])` を追加する。**設定内容は4系モデルの `public $actsAs['BcUpload']` をそのまま移植できる**（`saveDir` / `fields` / `namefield` / `nameformat` / `imagecopy` のキー構成は同じ）。移植を怠ると画像URLのサフィックス（`thumb_` / `pub_` 等）が生成されず404になる。

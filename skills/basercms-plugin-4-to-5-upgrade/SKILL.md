@@ -64,6 +64,11 @@ license: MIT
 ### 3. 日付・時刻
 - `FrozenTime` → `Cake\I18n\DateTime` が推奨。ICU パターンと PHP `date()` 形式の使い分け・null 安全の正本は basercms5-plugin-development §7「日付・数値・文字列」を参照。
 
+#### datePicker は `datepicker()` 直呼びではなく `control(['type' => 'datePicker'])` にする
+- 検出: 日付欄だけ枠線やサイズが他の入力欄と違って見える（`bca-textbox` / `bca-textbox__input` が付いていない）。4系テンプレの `$this->BcForm->datepicker('open_date', array('size' => 12), true)` をそのまま `BcAdminForm->datepicker(...)` に置換しただけの箇所で起きる。
+- 原因: 管理画面のクラス付与は `BcAdminFormHelper::control()` の type 別分岐（`datePicker` → `bca-textbox__input` ＋ コンテナ `bca-textbox`）で行われる。ヘルパのメソッドを直接呼ぶとこの分岐を通らず、素の `<input type="text">` が出る。
+- 変換: `$this->BcAdminForm->control('open_date', ['type' => 'datePicker', 'size' => 12, 'maxlength' => 10])`。CakePHP の `FormHelper::control()` は未知の type を同名メソッドへ委譲するので、`BcFormHelper::datePicker()`（jQuery UI の初期化 script 付き）がそのまま呼ばれる。日時なら `'dateTimePicker'`（コアの `content_options.php` 等が使っている正本）。**`file` / `select` / `radio` / `checkbox` / `textarea` も同じ理屈**——4系の `$this->BcForm->○○()` 直呼びが残っていたら type 指定の `control()` へ寄せる。
+
 #### ★[最重要] datePicker の日付が保存されない（datetime カラムが NULL になる）
 - 検出: 日付系カラムが**保存しても消える（NULL）**。原因は2つの組合せ: ①4系 `BcFormHelper::datePicker` は**スラッシュ形式**（例 `2026/06/28`）で送る、②5系 `DateTimeType::marshal` は `Y-m-d H:i:s` を要求し、スラッシュ形式もハイフンの「日付のみ」も NULL にする。逆に純 `date` カラム（`DateType`）は「時刻付き」を NULL にする——**カラム型で要求が真逆**なので、移行先が date か datetime かを migration の `SHOW CREATE TABLE` で必ず確認する。
 - 変換の要点: 保存側（patchEntity の前）で正規化する。datetime 向けは `'/'→'-'`＋日付のみなら ` 00:00:00` 補完＋空は null、date 向けは `'/'→'-'`＋空は null（時刻は付けない）。プラグイン共通の Util に集約し、**1画面で気づいたら同種の datePicker 保存を全フォームへ横展開**する。編集画面の表示（GET）も add 画面の既定値と揃えてスラッシュ（`$v->format('Y/m/d')`＝PHP 形式）で統一する（保存側の正規化が両形式を受けるので安全）。

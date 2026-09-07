@@ -64,6 +64,12 @@ license: MIT
 ### 3. 日付・時刻
 - `FrozenTime` → `Cake\I18n\DateTime` が推奨。ICU パターンと PHP `date()` 形式の使い分け・null 安全の正本は basercms5-plugin-development §7「日付・数値・文字列」を参照。
 
+#### ★4系 `pages.code`（固定ページ専用の style/script）は移行で消える
+- 4系の `pages` テーブルには本文 `contents` とは別に **`code` カラム**があり、管理画面の「コード」欄からそのページ専用の `<style>` / `<script>` / `<?php $this->BcBaser->css('page/xxx') ?>` を書けた。**5系の `pages` に該当カラムは無く、BcDbMigrator は警告も出さずに捨てる。**
+- 症状: 移行後、特定の固定ページだけレイアウトが崩れる（ボタンがただの箇条書きになる、画像が原寸で出る等）。**本文HTMLも読み込むCSSも本番と完全に同じなのに崩れる**ので原因を見失いやすい。**「本番のHTMLにインライン `<style>` があるのに移行後には無い」**が決め手。
+- 検出: 4系バックアップzipの `core/pages.csv` を開き、`code` 列が空でない行を数える。`SELECT id FROM <prefix>pages WHERE code <> ''` でもよい。**該当は数ページしかないことが多いので、全ページ目視ではなく必ずこの方法で洗う。**
+- 変換: 4系は `code` を**本文の直前**（`<div class="bge-contents">` の先頭）に出力していたので、**`contents` の先頭に連結すれば描画結果は同じ**になる。`<?php ... ?>` は5系の `contents` では実行されないので取り除き、**除去した PHP は必ず個別に評価する**（`css()` / `js()` の参照先が実在するか、`header('Location: ...')` のような副作用が無いか）。移行後にDBを作り直す前提なら、**手作業のSQLではなく「4系バックアップから SQL を生成するスクリプト」にしておく**（公開直前の再変換でも同じ結果になる）。
+
 #### ダッシュボードのウィジェットは ajax アクションではなく `Admin/element/Dashboard/*.php`
 - 4系: プラグインの `View/Elements/admin/dashboard/*.php` が自動収集され、中身は `$.bcDashboard.ajax('/admin/<plugin>/<controller>/ajax_xxx', '#Target')` で専用コントローラを叩いていた。
 - 5系: `DashboardAdminService::getPanels()` が **`plugins/<Plugin>/templates/Admin/element/Dashboard/*.php`**（`Dashboard` は大文字始まり）を収集し、`Admin/Dashboard/index.php` が**同期描画**する。ajax の往復は不要になるので、専用の ajax コントローラ／テンプレは削除してよい。

@@ -64,6 +64,17 @@ license: MIT
 ### 3. 日付・時刻
 - `FrozenTime` → `Cake\I18n\DateTime` が推奨。ICU パターンと PHP `date()` 形式の使い分け・null 安全の正本は basercms5-plugin-development §7「日付・数値・文字列」を参照。
 
+#### ダッシュボードのウィジェットは ajax アクションではなく `Admin/element/Dashboard/*.php`
+- 4系: プラグインの `View/Elements/admin/dashboard/*.php` が自動収集され、中身は `$.bcDashboard.ajax('/admin/<plugin>/<controller>/ajax_xxx', '#Target')` で専用コントローラを叩いていた。
+- 5系: `DashboardAdminService::getPanels()` が **`plugins/<Plugin>/templates/Admin/element/Dashboard/*.php`**（`Dashboard` は大文字始まり）を収集し、`Admin/Dashboard/index.php` が**同期描画**する。ajax の往復は不要になるので、専用の ajax コントローラ／テンプレは削除してよい。
+- 集計は**ヘルパに持たせる**のが5系の流儀（正本: コアの `bc-admin-third/templates/plugin/BcMail/Admin/element/Dashboard/mail_messages.php` が `$this->loadHelper('BcMail.Mail')` している）。パネル側は `$this->loadHelper('<Plugin>.Xxx')` して呼ぶだけにする。
+
+#### `quoteIdentifiers = true` の環境では、生SQL文字列を `select()` に直接渡さない
+- 症状: `SQLSTATE[42S22] Unknown column 'created), '/', MONTH(created' in 'field list'` のように、**式がカンマで割れた形**でエラーになる。識別子クオート処理が式を列名として扱うため。
+- 該当しやすいのは4系からそのまま持ってきた集計クエリ（`CONCAT(YEAR(created), '/', MONTH(created))`、`CASE WHEN ...` など**カンマを含む式**）。`SUM(count)` のような単純な関数は通ってしまうので、**動く式と動かない式が混在して原因が見えにくい**。
+- 変換: `$query->newExpr("CONCAT(YEAR(created), '/', MONTH(created))")` で包み、`select()` / `groupBy()` に**同じ式オブジェクトを渡す**。`orderBy` も `$query->newExpr('MIN(created) DESC')`。
+- 併せて: 4系の `['col <>' => null]`（CakePHP2 は暗黙に `IS NOT NULL`）は、5系では `InvalidArgumentException: Expression 'col' has invalid 'null' value` になる → `['col IS NOT' => null]` に分岐する。
+
 #### datePicker は `datepicker()` 直呼びではなく `control(['type' => 'datePicker'])` にする
 - 検出: 日付欄だけ枠線やサイズが他の入力欄と違って見える（`bca-textbox` / `bca-textbox__input` が付いていない）。4系テンプレの `$this->BcForm->datepicker('open_date', array('size' => 12), true)` をそのまま `BcAdminForm->datepicker(...)` に置換しただけの箇所で起きる。
 - 原因: 管理画面のクラス付与は `BcAdminFormHelper::control()` の type 別分岐（`datePicker` → `bca-textbox__input` ＋ コンテナ `bca-textbox`）で行われる。ヘルパのメソッドを直接呼ぶとこの分岐を通らず、素の `<input type="text">` が出る。

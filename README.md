@@ -30,7 +30,7 @@ baserCMS / CakePHP / PHP の開発・移行で使う **Agent Skills** を共有�
 
 ## 導入方法
 
-skills.sh、apm、gh skill での導入方法をご紹介します。
+skills.sh、apm、gh skill、Claude Code プラグインでの導入方法をご紹介します。
 　　
 
 ### 1. skills.sh（npx）
@@ -139,6 +139,36 @@ gh skill update php-migration
 - ⚠️ **導入時に SKILL.md の frontmatter へ provenance メタデータ（`metadata.github-*`）が書き込まれます**（利用側コピーのみ。提供元 repo は無改変）。`gh skill update` はこのメタを見て更新判定します。
 - 専用 lockfile は作られません（出所は各 SKILL.md が保持）。
 
+
+### 4. Claude Code プラグイン
+
+Claude Code 専用の方式です。リポジトリ自体がプラグインのマーケットプレイスになっており、全スキルを1つのプラグインとしてまとめて導入します（個別導入は不可）。
+
+**導入**:
+
+```bash
+claude plugin marketplace add baserproject/baser-skills
+claude plugin install baser-skills@baser-skills
+```
+
+Claude Code の対話画面では `/plugin marketplace add baserproject/baser-skills` → `/plugin install baser-skills@baser-skills` でも導入できます。
+
+**アップデート**:
+
+```bash
+claude plugin marketplace update baser-skills
+claude plugin update baser-skills@baser-skills
+```
+
+- バージョンは main のコミットに追従します（`plugin.json` に version を書いていないため、コミットごとに更新扱い）。
+- 実体は `~/.claude/plugins/` 配下のキャッシュに置かれ、案件リポジトリには入りません。チームで揃えるには、案件の `.claude/settings.json` に `extraKnownMarketplaces` と `enabledPlugins` を書きます。
+- スキル名は `baser-skills:php-migration` のように名前空間付きになります。
+
+**注意事項**
+- ⚠️ **他の方式と併用しないでください**。skills.sh などで `.claude/skills/` にも入っていると、同じスキルが2つ見えます。
+- ⚠️ Copilot / Codex などは読みません。Claude Code 以外でも使う場合は 1〜3 の方式を選んでください。
+- 案件内でスキルを編集してコミットする運用には向きません（キャッシュは編集対象外）。
+
 ---
 　
 
@@ -149,6 +179,7 @@ gh skill update php-migration
 | skills.sh | `.agents/skills/` + 各agentへsymlink（Claude Code は `.claude/skills/` への symlink） | ❌ ハッシュのみ | なし | `skills-lock.json` |
 | APM | `--target` 指定先（`claude` / `agent-skills` など） | ✅ lockに記録 | なし | `apm.lock.yaml` |
 | gh skill | `--agent` 指定先（例 `claude-code` → `.claude/skills/`） | ✅ `--pin` | あり（metadata付与） | なし |
+| Claude Code プラグイン | `~/.claude/plugins/` 配下のキャッシュ | ❌ コミット追従 | なし | なし |
 
 - ⚠️ **`.agents/skills/` を直接読むのは Copilot / Codex など**。**Claude Code は `.agents/skills/` を読まず `.claude/skills/`（と `~/.claude/skills/`）のみ**を見ます（[claude-code#31005](https://github.com/anthropics/claude-code/issues/31005)）。そのため Claude Code 向けには `.claude/skills/` への配置（または symlink）が必要です。
   - skills.sh は自動で `.claude/skills/` への symlink を張る／gh skill は `--agent claude-code` で直接配置／APM は `--target claude` を併記、で対応できます。

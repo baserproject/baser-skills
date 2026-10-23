@@ -1,0 +1,10 @@
+{
+  "name": "baser-skills",
+  "description": "baserCMS / CakePHP / PHP の開発・移行で使う Agent Skills 一式",
+  "author": {
+    "name": "NPO baser foundation"
+  },
+  "homepage": "https://github.com/baserproject/baser-skills",
+  "repository": "https://github.com/baserproject/baser-skills",
+  "license": "MIT"
+}

@@ -1,0 +1,16 @@
+{
+  "name": "baser-skills",
+  "owner": {
+    "name": "NPO baser foundation"
+  },
+  "metadata": {
+    "description": "baserCMS / CakePHP / PHP の開発・移行で使う Agent Skills"
+  },
+  "plugins": [
+    {
+      "name": "baser-skills",
+      "source": "./",
+      "description": "baserCMS / CakePHP / PHP の開発・移行で使う Agent Skills 一式"
+    }
+  ]
+}

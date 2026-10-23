@@ -205,6 +205,16 @@ gh skill publish --tag 1.0.0
 
 ---
 
+## 実行する処理と外部通信
+
+収録スキルの大半は手順とルールを記述した文書で、それ自体は何も実行しません。スクリプトを含むのは `basercms-security-advisory` だけで、Claude がユーザーの指示に沿って実行します。
+
+- **GitHub への通信**: 利用者の `gh` CLI の認証を使い、対象リポジトリのセキュリティアドバイザリの取得、一時フォークの作成、ブランチの push、プルリクエストの作成を行います。対象リポジトリは既定で `baserproject/basercms` で、環境変数 `BCSA_UPSTREAM` で変更できます。
+- **ローカルでの実行**: Docker コンテナ内で PHPUnit を実行します。
+- **それ以外の送信はしません**: 上記以外の外部サービスへのデータ送信、資格情報の読み取りや転送、Claude の権限設定の変更は行いません。フックや MCP サーバーも含みません。
+
+---
+
 ## ライセンス
 
 [MIT License](LICENSE) — Copyright (c) 2010-present, NPO baser foundation。各スキルの frontmatter にも `license: MIT` を記載しています。

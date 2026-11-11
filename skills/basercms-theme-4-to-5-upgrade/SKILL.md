@@ -166,3 +166,25 @@ license: MIT
   - 名前で探さず、**5系でも変わらない行の id の中の要素**で探す: `$('input[name="data[MailMessage][privacy_agree][]"]')` → `$('#RowMessagePrivacyAgree input[type="checkbox"]')`。4系・5系どちらの名前でも動く。
   - JS が `#MailMessageMode` 等の id を前提にしているなら、`mailFormHidden('mode', ['id' => 'MailMessageMode'])` のように id を明示する（F-17・basercms5-theme-development §6）。入力欄なら `mail_input` 側で id を補う。
 - **見落としやすい**: 4系と5系の画面の HTML を比べる全件突合では、JS の中の名前の違いは見つからない。移行のときは、**公開中のメールフォームを全部、全項目を埋めて確認画面まで送る**確認を必ず入れる（必須の同意チェック・ファイル添付・数値の項目も埋める。送信までは行わないのでメールは飛ばない）。
+
+### F-31. Ajax で送るメールフォーム（LP などに埋め込んだもの）が、確認・送信でページ全体を返し「空の入力画面に戻る」
+- 症状: 「確認する」を押すと、入力した項目が空になった入力画面に戻る。エラーも出ない（実際の移行案件の、LP に埋め込んだ問い合わせフォームで発生）。
+- 作り: ページのレイアウトが `$this->Mail->getForm(<mail_contents.id>)` でフォームを埋め込み、テーマの JS が `$.ajax({url: form の action, data: form.serialize()})` で送って、返ってきた HTML を `$('.wrap').html(data)` で差し替える。
+- 原因: **4系（CakePHP 2）は Ajax のリクエスト（`X-Requested-With: XMLHttpRequest`）でレイアウトを自動で外していた**（RequestHandler）。**5系は外さない**ので、確認・送信の応答がレイアウト付きのページ全体になり、その中のレイアウトが埋め込む「空の入力フォーム」が差し込まれる。
+- 直し方: そのフォームのメールテンプレート（`templates/Mail/<form_template>/index.php`・`confirm.php`・`submit.php`）の先頭で、Ajax のときだけレイアウトを外す:
+  ```php
+  if ($this->getRequest()->is('ajax')) {
+      $this->disableAutoLayout();
+  }
+  ```
+- 検出: テーマ全体を `grep -rnE 'getForm\(|\$\.ajax|\.serialize\(\)'` で探し、メールフォームを Ajax で送る作りが無いかを見る。あれば、`X-Requested-With: XMLHttpRequest` を付けて確認画面まで送り、**応答に `<html` が無く、フォームの送り先が `/submit` になっている**（確認画面の断片が返る）ことを確かめる。
+- 4系の `$this->Mail->token()`（戻るボタン対策）も5系に残っているが、5系のコアの `mail_token.js` は4系の項目名（`data[_Token][key]`）と `input[type="submit"]` を探すので、`<button>` のフォームでは何もしない。害は無いが、効いてもいない。
+
+### F-32. メールフォームの移行は、フォームごとに「作り」を棚卸ししてから確かめる
+- メールフォームは、テーマ側でテンプレートの HTML を大きく作り変えていたり、独自の仕様（見た目だけのチェックボックスを JS で本物の項目に写す・Ajax で送る・LP に埋め込む・`mail_input` を独自に書き直す・確認画面を出さない など）を持っていたりすることが多い。**全件突合（画面の HTML の比較）では、送信の不具合はほぼ見つからない**（F-30・F-31）。
+- 移行の前に、公開中のフォームごとに次を表にしておき、移行の後に1つずつ確かめる:
+  - フォームの テンプレート名（`mail_contents.form_template`）と、テーマで上書きしているファイル（`templates/Mail/<名前>/`・`element/*mail*`）
+  - JS の有無と中身（項目名・id で要素を探していないか・Ajax で送っていないか）
+  - どこに置かれているか（単独のページか、LP などに埋め込み・`getForm()` か）
+  - 必須の同意・ファイル添付・数値・選択肢・グループの入力チェック
+- 確かめ方: 全項目を埋めて**確認画面まで**送り、確認画面のフォームの送り先が `/submit` になっていることで判定する（URL が `/confirm` でもエラーの文が無くても、入力画面が返っていることがある）。Ajax で送るフォームは `X-Requested-With` を付けて送る。最後に、テスト用の宛先にして**実際に送信まで**通し、管理者への通知と自動返信の2通・文字化けを見る。

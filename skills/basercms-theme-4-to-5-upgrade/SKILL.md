@@ -1,6 +1,6 @@
 ---
 name: basercms-theme-4-to-5-upgrade
-description: 'baserCMS 4 のテーマ（templates/layout・element・Blog/Pages/Mail テンプレート＋少数の Helper で構成）を baserCMS 5 のテーマプラグインへ移行する際のパターン集。「テーマを4から5へ移行」「BcAddonMigrator でテーマ変換後の手修正」「siteConfig[] 廃止」「fullUrl() 廃止」「blogPosts() 等ショートカットメソッドの実在確認」「メールフォームテンプレートの移行（Mailform→BcBaser mailForm系）」「ウィジェット element の widgets→widget」「ビュー変数が空」「params[Content] 廃止」「css()/js() の inline 第2引数化」「pageTitleHelper could not be found」「BcPage->content() 廃止」「固定ページテンプレートが Pages/templates/ にあって Missing Template」「getBlogs() 廃止」「BlogCategory 配列アクセス」「BcUpload の setTable / BcUploadBehavior 未設定」「アイキャッチ画像404」「サブディレクトリ設置でURLの base が欠ける」等で参照する。テーマ固有の移行パターン（TH-系）と、フロント表示エラーのうちテンプレート・テーマ描画系の実例パターン（F-系）を収録。本スキルは4系イディオムの検出と変換に絞り、5系テーマの正しい書き方の正本は basercms5-theme-development を参照する。プラグイン内部コード（Controller/Table/Entity/管理画面）は basercms-plugin-4-to-5-upgrade、サイト全体の手順は basercms4-to-5-upgrade、テスト実行は basercms-unittest スキルを参照。'
+description: 'baserCMS 4 のテーマ（templates/layout・element・Blog/Pages/Mail テンプレート＋少数の Helper で構成）を baserCMS 5 のテーマプラグインへ移行する際のパターン集。「テーマを4から5へ移行」「BcAddonMigrator でテーマ変換後の手修正」「siteConfig[] 廃止」「fullUrl() 廃止」「blogPosts() 等ショートカットメソッドの実在確認」「メールフォームテンプレートの移行（Mailform→BcBaser mailForm系）」「ウィジェット element の widgets→widget」「ビュー変数が空」「params[Content] 廃止」「css()/js() の inline 第2引数化」「pageTitleHelper could not be found」「BcPage->content() 廃止」「固定ページテンプレートが Pages/templates/ にあって Missing Template」「getBlogs() 廃止」「BlogCategory 配列アクセス」「BcUpload の setTable / BcUploadBehavior 未設定」「アイキャッチ画像404」「サブディレクトリ設置でURLの base が欠ける」等で参照する。テーマ固有の移行パターン（TH-系）と、フロント表示エラーのうちテンプレート・テーマ描画系の実例パターン（F-系）を収録。本スキルは4系イディオムの検出と変換に絞り、5系テーマの正しい書き方の正本は basercms5-theme-development を参照する。プラグイン内部コード（Controller/Table/Entity/管理画面）は basercms-plugin-4-to-5-upgrade、サイト全体の手順は basercms4-to-5-upgrade、テスト実行は basercms-unittest スキルを参照。「サブサイトの管理画面で CKEditor が出ない（themeEditorCsses.map is not a function）」'
 license: MIT
 ---
 
@@ -188,3 +188,12 @@ license: MIT
   - どこに置かれているか（単独のページか、LP などに埋め込み・`getForm()` か）
   - 必須の同意・ファイル添付・数値・選択肢・グループの入力チェック
 - 確かめ方: 全項目を埋めて**確認画面まで**送り、確認画面のフォームの送り先が `/submit` になっていることで判定する（URL が `/confirm` でもエラーの文が無くても、入力画面が返っていることがある）。Ajax で送るフォームは `X-Requested-With` を付けて送る。最後に、テスト用の宛先にして**実際に送信まで**通し、管理者への通知と自動返信の2通・文字化けを見る。
+
+### F-33. サブサイトの管理画面で CKEditor が出ない（ブログの「概要」欄などが、ただの入力欄のまま）
+- 症状: 別名（エイリアス）のあるサブサイト（例 別名 `blog`）のブログ記事の編集画面で、「概要」欄が CKEditor にならない。ブラウザのコンソールに `Uncaught TypeError: e.themeEditorCsses.map is not a function`（`jquery.bcCkeditor.js`）と、続けて `$.bcCkeditor.editor.editor_content is undefined` が出る。メインサイト（別名なし）では起きない。4系では起きていなかった。
+- 条件: そのサイトのテーマに、テーマ直下の `webroot/css/editor.css` だけがあり、別名用の `webroot/css/<別名>/editor.css` が無い。4系のテーマは `css/editor.css` だけを持つことが多いので、移行するとそのまま当てはまる。
+- 原因: **5系のコアの不具合**（5.0 から。5.4.2・`5.4.x` の最新でも同じ）。`BcCkeditorHelper::getThemeEditorCsses()` は「別名用」「テーマ直下」の2つを候補にし、ファイルが無い候補を `unset()` で消すが、添字を詰めない。1つ目だけが消えると `[1 => '…/css/editor.css']` になり、JSON にするとオブジェクト（`{"1": "…"}`）になって、JS 側の `.map()` で止まる。4系は PHP で順に見て、見つかった1つを `contentsCss` に書いていたので起きなかった。
+- 直し方:
+  - コアの修正（`return array_values($themeEditorCsses);`）を上流に出し、取り込まれるまでは `vendor/` のパッチとして当てる。
+  - コアに手を入れずに逃げるなら、テーマに別名用の `webroot/css/<別名>/editor.css` を置く（中身はテーマ直下の `editor.css` と同じでよい）。候補が2つとも残るので、添字が飛ばない。
+- 検出: 別名のあるサイトごとに、テーマの `webroot/css/editor.css` と `webroot/css/<別名>/editor.css` の有無を見る。前者だけがあれば当てはまる。画面では、そのサイトのブログ記事か固定ページの編集画面を開き、コンソールのエラーを見る。全件突合（公開側の HTML の比較）でも、管理画面の巡回（HTTP の状態だけを見る）でも見つからない。

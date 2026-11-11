@@ -157,3 +157,12 @@ license: MIT
 - 症状は2段階で出る。F-22（第2引数エンティティ化）を直した後に続けて出るので、セットで覚える。
   1. `BcUploadHelper を利用するには、$this->BcUpload->setTable() か …` → テンプレートの冒頭で `$this->BcUpload->setTable('<Plugin>.<Tables>');`（または `$this->BcBaser->setTableToUpload(...)`）を呼ぶ。
   2. `BcUploadHelper を利用するには、テーブル <...>Table で BcUploadBehavior の利用設定が必要です。` → Table の `initialize()` に `$this->addBehavior('BaserCore.BcUpload', [...])` を追加する。**設定内容は4系モデルの `public $actsAs['BcUpload']` をそのまま移植できる**（`saveDir` / `fields` / `namefield` / `nameformat` / `imagecopy` のキー構成は同じ）。移植を怠ると画像URLのサフィックス（`thumb_` / `pub_` 等）が生成されず404になる。
+
+### F-30. メールフォームの JS が4系の項目名（`data[MailMessage][xxx]`）・id（`#MailMessageXxx`）を探していて、黙って効かなくなる
+- 症状: エラーも 404 も出ないまま、送信や確認画面への遷移だけが失敗する。例: 見た目だけの同意チェックボックスにチェックを入れても、JS が非表示の本物の項目（`multi_check` の必須フィールド）へ写せず、送信すると「エラー：入力内容を確認して再度送信してください。」になる（実際の移行案件の、営業受付フォームで発生）。
+- 原因: 5系のメールフォームは input の `name` が `data[MailMessage][xxx][]` → **`xxx[]`**、自動の id が `MailMessageXxx` → **`xxx`（ケバブケース）** に変わった。テーマの JS（テンプレート内の `<script>`・`webroot/js/*.js`・min 版）が4系の名前や id で要素を探していると、何も見つからず何も起きない。行の id（`#RowMessageXxx`）とボタンの id（`#BtnMessageConfirm` など）は5系でも同じ。
+- 検出: テーマ全体を `grep -rnE "data\[MailMessage\]|#MailMessage[A-Z]|MailMessage[A-Z][A-Za-z]+"` で探す（`templates/`・`webroot/js/`・`min/` を含める）。見つかったセレクタごとに、5系の画面の HTML にその name / id が本当にあるかを確かめる。
+- 直し方:
+  - 名前で探さず、**5系でも変わらない行の id の中の要素**で探す: `$('input[name="data[MailMessage][privacy_agree][]"]')` → `$('#RowMessagePrivacyAgree input[type="checkbox"]')`。4系・5系どちらの名前でも動く。
+  - JS が `#MailMessageMode` 等の id を前提にしているなら、`mailFormHidden('mode', ['id' => 'MailMessageMode'])` のように id を明示する（F-17・basercms5-theme-development §6）。入力欄なら `mail_input` 側で id を補う。
+- **見落としやすい**: 4系と5系の画面の HTML を比べる全件突合では、JS の中の名前の違いは見つからない。移行のときは、**公開中のメールフォームを全部、全項目を埋めて確認画面まで送る**確認を必ず入れる（必須の同意チェック・ファイル添付・数値の項目も埋める。送信までは行わないのでメールは飛ばない）。

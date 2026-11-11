@@ -1,6 +1,6 @@
 ---
 name: basercms4-to-5-upgrade
-description: 'baserCMS 4 (CakePHP 2ベース) のコード・サイトを baserCMS 5 (CakePHP 5ベース) へアップグレード／移行する際に AIエージェントが遵守すべきルールとパターン集。「baserCMS 4 から 5 へ移行」「4系を5系にアップグレード」「BcDbMigrator でデータ移行」「BcAddonMigrator でテーマ／プラグイン変換」「CakePHP 2 → CakePHP 5 への書き換え」「admin_ プレフィックスメソッドの Controller/Admin への移動」「config/setting.php・config.php の return 配列化」「init.php 廃止と PluginClass 作成」「migration_snapshot 生成」「site_configs theme → sites theme」「移行の標準フロー／工程の順序」「プラグインを DB で直接有効化」「テーマを DB で直接適用」「request->data／query／params の getter 化」「File/Folder クラス廃止」「ClassRegistry → TableRegistry」「FrozenTime → DateTime」「FixtureManager → FixtureFactory」等、4→5 アップグレード作業全般で参照する。プラグイン内部コード（Controller/Table/Entity/View/Helper/フォーム/Vue・JS）の具体的な書き換えパターンは basercms-plugin-4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest スキルを参照。移行先である5系での正しい書き方（開発の正本）は basercms5-plugin-development / basercms5-theme-development を参照。'
+description: 'baserCMS 4 (CakePHP 2ベース) のコード・サイトを baserCMS 5 (CakePHP 5ベース) へアップグレード／移行する際に AIエージェントが遵守すべきルールとパターン集。「baserCMS 4 から 5 へ移行」「4系を5系にアップグレード」「BcDbMigrator でデータ移行」「baserCMS 5.4 で BcDbMigrator / BcAddonMigrator が動かない」「isValidSchemaFile がメソッド付きスキーマを拒否」「ゼロ日付 0000-00-00 が MySQL 8 で投入できない」「blog_posts の (blog_content_id, no) 重複」「setting.php が return 配列にならない」「移行後に運営者のメニューや権限が4系と違う（コンテンツ管理が出ない）」「管理者以外だと管理画面が極端に遅い」「公開前に別のホスト名で新旧を見比べたい（SITE_URL）」「移行後にコアを版上げする（修正版・系をまたぐとき）」「BcAddonMigrator でテーマ／プラグイン変換」「CakePHP 2 → CakePHP 5 への書き換え」「admin_ プレフィックスメソッドの Controller/Admin への移動」「config/setting.php・config.php の return 配列化」「init.php 廃止と PluginClass 作成」「migration_snapshot 生成」「site_configs theme → sites theme」「移行の標準フロー／工程の順序」「プラグインを DB で直接有効化」「テーマを DB で直接適用」「request->data／query／params の getter 化」「File/Folder クラス廃止」「ClassRegistry → TableRegistry」「FrozenTime → DateTime」「FixtureManager → FixtureFactory」等、4→5 アップグレード作業全般で参照する。プラグイン内部コード（Controller/Table/Entity/View/Helper/フォーム/Vue・JS）の具体的な書き換えパターンは basercms-plugin-4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest スキルを参照。移行先である5系での正しい書き方（開発の正本）は basercms5-plugin-development / basercms5-theme-development を参照。'
 license: MIT
 ---
 
@@ -129,6 +129,8 @@ bin/cake install [設置URL（例：https://localhost/v5/）] [管理者メー�
 
 ログインURLは、`https://localhost/v5/baser/admin/baser-core/users/login` のような形となります。
 
+- **[公開前に別のホスト名で新旧を見比べるなら、`SITE_URL` もそのホスト名にする]** 管理画面は `config/.env` の `SITE_URL` のホストへ強制的に転送される。新サーバを `dev.example.com` のような確認用のホスト名で見る間に `SITE_URL` を本番のホスト名（`https://example.com/`）にしておくと、確認用のホスト名でログインしようとしても**本番（旧サーバ）へ飛ばされる**。公開前は `SITE_URL` を確認用のホスト名にし、公開の作業で本番のホスト名へ戻して `bin/cake cache clear_all`（確認用のホスト名は本番への 301 にしてから片付ける）。`/etc/hosts` で本番のホスト名を新サーバへ向けるやり方は、同じ URL で新旧を同時に開けないので見比べに向かない
+
 - **[重要・サブディレクトリ設置時の SITE_URL はサブディレクトリ込みにする＋変更後は必ずキャッシュ全消去]** サブディレクトリ設置では `config/.env` の `SITE_URL` は**サブディレクトリを含むフルURL**（例 `https://localhost/v5/`）が**正しい**。ここを**ドメインルート（`https://localhost/`）に変えてはいけない**——一見 `/v5/v5` 二重化が消えるように見えるが、代わりに**管理ログインが自分自身へ 302 する無限ループ**になる（loginUrl とリクエストパスが食い違い、ログインページが「保護対象」と誤判定されるため）。
   - **管理画面が `/v5/v5` 二重化(404) や リダイレクトループになったときの真因は、多くが「`.env`（特に SITE_URL）を変更した後のキャッシュ残り」**。baserCMS はルート/URLをキャッシュするため、`.env` を変えたら必ず **`bin/cake cache clear_all`** を実行する。SITE_URL を正しい `https://host/v5/` に戻し、キャッシュを消せば解消する（実証済み）。
   - **[検証はコンテナ内 curl でなく実ブラウザで]** `nginx-proxy` 配下では、コンテナ内から `curl https://localhost/...` を叩いても **`X-Forwarded-Proto` 等のプロキシヘッダが付かず、実ブラウザと違うリダイレクト挙動**を示す（SSL/正規化リダイレクトの判定がズレる）。管理リダイレクトの生死は**必ずプロキシ経由の実ブラウザ**で確認する。コンテナ内 curl の 302/二重化を鵜呑みにして「サブディレクトリの根本バグ」と誤診しない。
@@ -153,12 +155,18 @@ bin/cake install [設置URL（例：https://localhost/v5/）] [管理者メー�
         *   **(推奨・低摩擦) DB レコードで有効化**: `BcDbMigrator` は**インストールスクリプト（マイグレーション）を持たない**ため、`plugins` テーブルに1行 INSERT すれば有効化できる（`name='BcDbMigrator', title='BcDbMigrator', version='5.2.0', status=1, db_init=1, priority=<末尾+1>, created/modified=NOW()`）。ブラウザ操作不要。有効化後 `bin/cake` にコマンドが出る。
         *   (代替) 管理画面のプラグイン管理からインストール。※`cake plugin load`／`config/plugins.php` 直接編集は不可（ルーティング不整合でクラッシュ要因）。
     3.  **変換実行（CLI 対応・5.2.0 以降）**: **BcDbMigrator 5.2.0 で CLI 実行に対応**した（旧版はブラウザ専用）。`docker exec <container> bash -lc 'cd v5 && bin/cake bc_db_migrator tmp/<v4バックアップ>.zip'` を実行すると、変換済み zip が `v5/tmp/baserbackup_<v5version>_<日時>.zip` に出力される（アップロード/ダウンロードの往復が不要。エラー時もアシスタントが反復できる）。変換は一時接続（`bcOldDbMigrator`/`bcNewDbMigrator`・接頭辞付き一時テーブル）で行われ**ライブ DB は変更しない**（出力は zip のみ）。
-        *   **[重要・baser-core 5.2.5 との非互換パッチ]** BcDbMigrator 5.2.0 の変換は旧スキーマPHPを `extends \BaserCore\Database\Schema\BcSchema`（**FQN**）に置換するが、baser-core 5.2.5 の `BcDatabaseService::isValidSchemaFile()` は AST で **extends が短縮名 `BcSchema` の完全一致**であることを要求するため、`無効なスキーマファイル: BcSchema を継承し、drop/create メソッドをオーバーライドしてはいけません` で全滅する（CLI/ブラウザ共通の Component 経路）。**対処**: `plugins/BcDbMigrator/src/Controller/Component/BcDbMigratorComponent.php` の `_createTableBySchema()` 内、`extends CakeSchema` を FQN でなく短縮名に置換し `use` 文を足す:
-            ```php
-            $contents = preg_replace('/extends CakeSchema/', 'extends BcSchema', $contents);
-            $contents = str_replace('<?php', "<?php\nuse BaserCore\\Database\\Schema\\BcSchema;", $contents);
-            ```
-            （本家 BcDbMigrator 未対応のためのローカルパッチ。**根本原因は baser-core 側**＝`isValidSchemaFile()` が短縮名の完全一致のみ許可し FQN を弾く点。これを FQN も受理するよう緩和する修正を baserproject/basercms へ **PR #4438（5.3.x 宛）で提出済み**。マージ・リリースまでは本ローカルパッチ（BcDbMigrator 側で短縮名に置換）が必要。5.3 以降ではパッチ不要になる見込み。）
+        *   **[重要・baser-core 5.4 では別のパッチが必要（実証済み）]** 5.4 では `BcDatabaseService::isValidSchemaFile()` の要求が変わっており、**素の BcDbMigrator 5.2.0 は変換の最初のテーブル生成で必ず失敗する**。
+            *   **FQN パッチはもう不要**: 5.4 の `isValidSchemaFile()` は `extends` が短縮名 `BcSchema` でも **FQN `BaserCore\Database\Schema\BcSchema` でも受理する**（実装確認済み）。5.2.5 向けに書かれていた「短縮名へ置換する」パッチは 5.4 では当てなくてよい。
+            *   **代わりに「メソッド除去」パッチが必須**: 5.4 の `isValidSchemaFile()` は RCE 対策（GHSA-5hvm-279m-gg7r / GHSA-cg65-f2m7-9fqj）として、スキーマファイルに **「`BcSchema` を継承しメソッドを一切持たないクラスが1つだけ」** であることを AST で要求する（`use`／ブロックなし `declare`／1階層 `namespace` のみ許可。トップレベルのコードも不可）。一方、**4系 CakeSchema が生成するスキーマファイルは例外なく `before()` / `after()` の2メソッドを持つ**ため、`無効なスキーマファイル: BcSchema を継承したクラス定義のみが許可されており、クラス外のコードやメソッド定義を含めることはできません。` で全滅する。
+            *   **対処**: `_createTableBySchema()` の `$File->write($contents)` の直前で、`token_get_all()` を使いメソッド定義（修飾子・docコメント込み）を除去する。正規表現ではネストした波括弧を取り違えるため、必ずトークン単位で走査すること。baserCMS 4.7.2 のコアスキーマ16件＋プラグイン側4件の計20件で `isValidSchemaFile()` を通過することを確認済み。
+        *   **[重要・ゼロ日付は MySQL 8 に投入できない（実証済み）]** MySQL 5.x 時代の4系サイトは `0000-00-00 00:00:00` を保持していることがある。MySQL 8 の既定 sql_mode（`NO_ZERO_DATE` / `NO_ZERO_IN_DATE` / `STRICT_TRANS_TABLES`）では受け付けられず、さらに **PHP がこの値を `DateTime` に変換すると `-0001-11-30 00:00:00` になる**。これは MySQL の DATETIME 表現範囲（1000〜9999年）外なので、**sql_mode を緩めても投入できない**。
+            *   症状: `SQLSTATE[22007]: Invalid datetime format: 1292 Incorrect datetime value: '-0001-11-30 00:00:00'`
+            *   **対処**: `_loadCsv()` で CSV を読み込む前に `"0000-00-00 00:00:00"` / `"0000-00-00"` を `""`（= NULL）へ置換する。実サイトでは `users` / `mail_message_*` / `uploader_files` の4テーブル340件が該当した。
+            *   事前に該当有無を調べるには、v4 バックアップ zip を展開して `grep -l '0000-00-00' */*.csv`。
+        *   **[重要・5系のユニーク制約に4系データが違反することがある（実証済み）]** 5系 `blog_posts` は `(blog_content_id, no)` にユニーク制約があるが4系には無い。**過去に初期サンプル記事を読み込んだ形跡のあるサイトでは重複が残っており**、変換が `Duplicate entry '1-1' for key 'blog_content_id'` で止まる。
+            *   調べ方: バックアップ zip の `plugin/blog_posts.csv` を読み、`(blog_content_id, no)` の重複を数える。
+            *   **対処は「本番DBを触らず、バックアップ zip の CSV から除外して zip を作り直す」**。どちらを残すかはユーザーに確認する。実サイトでは、実記事 id=1/2 と衝突していた2014年混入のサンプル記事 id=787/788 が **本番でも到達不能だった**（`/news/archives/1` は id=1 が表示される）ため、除外して問題なかった。
+        *   **[復元は CLI が無いが、スクリプトで代替できる]** `UtilitiesService::restoreDb()` は `$_FILES` 前提でCLIから呼べないが、その中核の `_loadBackup()`（zip 内の `*Schema.php` を drop→create し CSV を投入）は直接呼べる。bootstrap 後に `$app->getContainer()` でサービスを登録し（`BaseApplication::getContainer()` が `services()` とプラグインの `services()` をまとめて呼ぶ）、`BcContainer::set()` した上でリフレクションで `_loadBackup()` を実行し、続けて `updateSequence()` → `resetTmpSchemaFolder()` → `BcUtil::clearAllCache()` を管理画面と同じ順序で呼べばよい。ブラウザ往復が消えるのでエージェントが自走できる。
     4.  **復元 (v5)**: baserCMS 5 管理画面「データメンテナンス」で変換後 zip を復元（**復元CLIは無くブラウザ専用**）。**この工程はプラグイン棚卸し/変換の後**に行う（下記「プラグイン」注意点）。
         *   **復元は zip の中身基準で動く（実装確認済み）**: `UtilitiesService::_loadBackup()` は zip 内の全 `*Schema.php` を drop→create し全 CSV を投入するだけで、**`plugins` テーブルの有効/無効は参照しない**。したがって、変換済み zip にスキーマ＋CSV が入っているテーブルは、該当プラグインが無効でも取り込まれる（`unzip -l` で `<Table>Schema.php` の同梱を確認しておく）。
         *   **★復元は `plugins` テーブル自体も zip の内容（=v4 のプラグイン一覧・全行 status=0）で置き換える（実測）**: 復元前に行った有効化レコード（コアの BcBlog/BcMail 等を含む）は**全部消えて無効化される**。**復元後に必ず再有効化する**: コア標準6つ `UPDATE plugins SET status=1 WHERE name IN ('BcBlog','BcMail','BcUploader','BcSearchIndex','BcThemeConfig','BcWidgetArea')` ＋移行対象のうち確認済みのもの（動作確認工程中なら移行対象は 0 のままでよい）。BcDbMigrator/BcAddonMigrator の行も消えるので、引き続き使うなら再 INSERT。実施後 `bin/cake cache clear_all`。
@@ -298,8 +306,18 @@ bin/cake install [設置URL（例：https://localhost/v5/）] [管理者メー�
     *   **`rm -rf` が Bash 権限で拒否される環境では `find <path> -delete` を使う**（例: `find v5/tmp/zip -delete`。ファイル個別は `find v5/tmp -maxdepth 1 -name '<Name>_*.zip' -delete`）。
     *   **注意**: 変換は完全ではありません。必ずコード全体を目視確認し、手動修正を行ってください。
     *   **BcAddonMigrator がやること／やらないこと（実測）**:
-        *   やること: `Controller/Model/View` の `src/` 名前空間化、`admin_` メソッドの `Controller/Admin` 分離、`src/<Name>Plugin.php` の生成（**空クラス** `class <Name>Plugin extends BcPlugin {}`）、`config.php`/`setting.php` の return 配列化。
+        *   やること: `Controller/Model/View` の `src/` 名前空間化、`admin_` メソッドの `Controller/Admin` 分離、`src/<Name>Plugin.php` の生成（**空クラス** `class <Name>Plugin extends BcPlugin {}`）、`config.php` の return 配列化。
         *   やらないこと: **`config/Schema`（4系 CakeSchema）→ `config/Migrations` への変換**（4系 Schema がそのまま残る）、**`config/init.php` の除去**（残骸として残る）、内部コードの5系化（`ClassRegistry`・`$this->data` 等は残存）。
+        *   **★baserCMS 5.4（nikic/php-parser 5.x）では素の 5.2.0 が途中で落ちる（実証済み・要パッチ）**:
+            *   `ParserFactory::create(ParserFactory::PREFER_PHP7)` は php-parser 5.x で廃止 →「`Call to undefined method ParserFactory::create()`」。`createForHostVersion()` に変更する（`MigrateController5.php`）。
+            *   `ClassMethod::$name` が `Identifier` 型になり、`admin_` 除去で文字列を直接代入すると「`Cannot assign string to property ClassMethod::$name of type Identifier`」→ `new \PhpParser\Node\Identifier(...)` でラップする。
+        *   **★`config/setting.php` は return 配列化されない（実証済み・要パッチ）**: `config.php` は変換されるが `setting.php` は `$config['Key'] = [...]` のまま残り、有効化した瞬間に「`Config file <Plugin>.setting.php. did not return an array`」で致命的エラーになる。`MigrateConfig5` に、`$config` を使うファイルへ末尾 `return $config ?? [];` を付与する処理を足すのが安全（多段キーやドット記法キーを配列リテラルへ畳み込むのは誤変換の危険が高いので、代入自体は残す）。
+        *   **★テンプレートに残る4系記法が変換されない（実証済み・要パッチ）**: 下記はいずれも `MigrateController5` 側でしか変換されていない／未対応で、テンプレート・レイアウト・ヘルパーに残ると描画時に落ちる。共通処理（`MigrateBasic5::replaceCode()`）へ移すとよい。
+            *   `$this->pageTitle` → `$this->BcBaser->setTitle()` / `getTitle()`。**残ると未定義プロパティがヘルパー名として解決され「`BaserCore.pageTitleHelper could not be found`」で500**になる（原因が分かりにくい代表例）。
+            *   `fullUrl()` → `$this->BcBaser->getUrl($url, true)`。引数に `$this->Html->url()` のような括弧を含む式が来るため、**正規表現ではなく括弧の対応を数えて**引数範囲を特定すること。
+            *   `$this->Html->url()` → `$this->BcBaser->getUrl(null)`（`HtmlHelper::url()` は CakePHP 5 で廃止）。
+            *   `$this->BcPage->content()` → `echo $page->contents;`（4系の固定ページテンプレートはほぼ全てこれを使っている）。
+            *   `getRequest()->getAttribute('params')['Content']['x']` → `getRequest()->getAttribute('currentContent')->x`。
         *   つまり変換直後は「配置と `php -l` は通るが、Migrations 無し・4系残骸あり」が正常な状態。復元運用なら有効化に支障はない（「プラグインの有効化（DB直接・標準）」節参照）。Migrations 生成・残骸掃除・内部5系化は横断チェック工程（フロー15-17）で行う。
 3.  **手動修正**:
     *   **ディレクトリ構成**: コントローラーの `admin_` プレフィックスメソッドは `Controller/Admin` 名前空間へ移動されています。
@@ -423,6 +441,71 @@ v5 標準 `.gitignore` は `/webroot/files/*` を無視する（正しい既定�
 
 ### G-4. v5 のネスト/取り込み
 `git add v5` 時、ネストした `v5/.gitignore` は親リポジトリでもそのまま効く（秘匿 `config/.env`・`app_local.php`・`vendor`・`tmp`・`logs` は自動除外される）。`git add -n`（dry-run）でステージ予定を必ず検証してからコミットする。プラグインを将来「再利用可能な独立リポジトリ」にしたい場合も、まずは親に通常ファイルで取り込み、安定後に `git subtree split` で切り出す段階移行が扱いやすい。
+
+## 移行後のユーザーグループのアクセスルール（運営者など）
+
+**4系と5系で、ルールに当てはまらない画面の扱いが逆。** 4系の `Permission::check()` は既定で許可し、拒否のルールに当てはまったものだけ見られない。5系は管理画面・管理用 API とも `BcPrefixAuth.<prefix>.permissionType = 1`（許可したものだけ見られる）。4系のルールは拒否中心なので、BcDbMigrator でそのまま移すと、管理者以外（運営者など）は**コンテンツ管理・アップロード・独自プラグインの管理画面などが開けなくなる**（ダッシュボードとお問い合わせ程度しか出ない）。
+
+- **BcDbMigrator は URL を一部しか直さない。** `/admin/users/edit*` などは5系の URL になるが、`/admin/permissions*`・`/admin/site_configs*`・`/admin/plugins*`・`/admin/users*` や独自プラグインの `/admin/<plugin_snake>/*` は4系のまま残り、5系ではどこにも当たらない。アクセスルールグループも1つしかできない
+- **4系のルールを写さず、5系の標準で作り直すのを標準とする**（公開後も5系で運用するため）。スクリプトの雛形は [`references/permissions-after-migration.md`](references/permissions-after-migration.md) の 1。`permissionType` を 2 にして4系の動きに合わせる案は、設定ファイルと DB に分かれ、5系の画面・説明と動きが食い違い、後から入れたプラグインの管理画面が開いてしまうので採らない
+  1. 復元の後に `PermissionGroupsService::rebuildByUserGroup(<グループID>)` を流す（管理画面の「アクセスルールグループ」の再構築と同じ処理。各プラグインの `config/permission.php` の標準が入る）。CLI 用のコマンドは無いので、`App\Application` を `bootstrap()`・`pluginBootstrap()` し、`BcContainer::set($app->getContainer())` してからサービスを呼ぶ小さなスクリプトにする
+  2. **`config/permission.php` を持たないプラグイン（独自プラグイン・第三者プラグイン・移行ツールなど）の扱いは、コアの版で違う。**
+     - **5.4.1 まで**: 作り直すと「フルアクセス」になる。管理者以外に使わせないもの（BcDbMigrator・BcAddonMigrator・BcMcp・静的書き出しなど）は、そのプラグインのアクセスルールグループのルールを `auth = 0` にする
+     - **5.4.2 から**: 作り直してもルールが1件も作られない（管理者だけが使える。`PermissionGroupsService::build()` の `$allowAllWithoutDefinition` の既定が `false`）。管理者以外に使わせるプラグインだけ、`build(<グループID>, '<プラグイン名>', true)` でフルアクセスを作る。5.4.1 のつもりの「拒否にする」だけのスクリプトのままだと、独自プラグインの管理画面が開けなくなる（判定の確認で気付ける）
+  3. **5系の判定処理で確かめる。** `PermissionsService::check($url, [<グループID>])` に、見られるはずの URL と見られないはずの URL を渡す。**CLI ではルーティングを読み込まないと URL の解析に失敗し、判定がすべて「許可」になる**（`$app->routes(Router::createRouteBuilder('/'))` と `$app->pluginRoutes()` を先に呼ぶ）
+- お気に入り（bc-favorite）は管理画面のページが無く、管理用 API（`/baser/api/admin/bc-favorite/favorites/*.json`）だけで動く。4系の「よく使う項目」（`/admin/favorites/*`）の許可を URL だけ5系にしても API には当たらず、**お気に入りのデータは移っているのに一覧が空**になる（データが移っていないように見える）
+- 4系でも、先頭に `/admin/*` の拒否を置き、使う画面だけ許可する作り（許可リスト型）のサイトがある。この場合も、BcDbMigrator はコアの画面の URL しか直さず、プラグインの画面（`/admin/<plugin_snake>/*`）の許可は4系の URL のまま効かない。作り直したうえで、4系で許可していたプラグインに 2 のフルアクセスを作る。4系で丸ごと許可していたコアの機能（例 `/admin/mail/*`）は、5系の標準で拒否になっているルール（メールフィールド管理など）を許可に変えると4系と同じになる
+- 仕上げは、そのグループの実際のアカウントで管理画面のメニューと各画面を開く（管理画面の巡回は admins で行うので、権限の確認にはならない）
+- コアの版によって `permission.php` の初期値が変わることがある（例 5.4.2 でメールフィールド管理が「許可しない」に）。作り直した結果はその版の標準になる
+
+## 移行後の性能: 管理者以外で管理画面が極端に遅い
+
+**症状**: 管理者だと速いのに、運営者などで管理画面（特に記事が多いブログの記事一覧）が数秒〜数十秒かかる。開発者ツールではページ本体の「受信」が長い（サーバがページを作りながら送っている）。DB が遅いサーバほどひどい。
+
+**原因**（5.4.2 時点のコア `PermissionsService::check()`）: 管理者は判定の最初で全許可として抜けるが、それ以外は画面のメニュー・一覧の各行のボタンごとに判定が走り、判定のたびに次をやり直す。
+- **公開側の URL の解析**（一覧の各行の公開ページへのリンク、`javascript:void(0)` など）: `Router::parseRequest()` が URL に当たるコンテンツを DB から大量に探す。公開側の認証は無効（`BcPrefixAuth.Front.disabled`）なので結果は必ず許可なのに、行の数だけ問い合わせが増える
+- ルールの URL を判定のたびに正規表現へ組み立て直す（ルール数百件 × 判定の回数）
+- 判定のたびにユーザーグループをユーザー全員ごと DB から読む（`UserGroupsService::get()` の `contain: ['Users']`）
+
+**進め方**（雛形と確かめ方は [`references/permissions-after-migration.md`](references/permissions-after-migration.md) の 2）
+1. 使っている版のコアで直っているか確かめる（直っていれば何もしない）
+2. 直っていなければ、`PermissionsService` を継承したクラスをサイトのプラグインに置き、プラグインの `services()` で `$container->extend(PermissionsServiceInterface::class)->setConcrete(...)` と差し替える（コアは触らない）
+   - 公開側の URL（管理画面・管理 API 以外）は、公開側の認証が無効なら解析せずに許可を返す（`addCheck()` で足された拒否は守る）
+   - 組み立てた正規表現・判定の結果・判定の中で読むユーザーグループを、1回のリクエストの間だけ static に控える（ユーザーグループは `getService()` を上書きし、`UserGroupsServiceInterface` のときだけ控える包みを返す。サービスそのものは差し替えない）
+   - アクセスルールを書き換えるメソッド（`create`・`update`・`delete`・`copy`・`publish`・`unpublish`・`batch`・`addCheck`）では控えを捨てる
+3. 判定の結果が元と1件も違わないこと、遅かった画面が速くなったことを確かめる
+4. コアに同じ改善が入った版に上げたら、差し替えを外す
+
+**例**: 記事50件の一覧で、1回の表示に約11,500回の問い合わせ（手元 7.3 秒、DB の遅いサーバで 36 秒）→ 差し替えて 0.36 秒（同 0.54 秒）。判定の結果は元と1件も違わなかった。
+
+## 移行後にコアを上げる（5系の版上げ）
+
+移行した後も、baserCMS のコアは版上げ（セキュリティの修正版など）が続く。どの版に上げるときも、手順は同じ。
+
+```bash
+composer update "baserproject/*" --with-dependencies
+bin/cake update
+bin/cake cache clear_all
+composer audit
+```
+
+- 先に DB を控える。`composer.json` の `baserproject/baser-core` を `<新しい版>` に直してから流す
+- **先にリリースノートを読む**（`gh release view <新しい版> -R baserproject/basercms`）。見ておくもの:
+  - 上げ方の注意（系をまたぐときに、経由する版があるか）
+  - アクセスルールなどの初期値の変更（移行の作業で作り直すものに効く）
+  - キャッシュの仕組みの変更（DB を入れ替えたら、キャッシュを消す必要があるか）
+- **`composer audit` で依存の依存に脆弱性が出たら、そのパッケージだけ上げる**（`composer update <パッケージ名>`）
+- 配布先へは、手元で上げた DB を丸ごと入れるなら、配布先で `bin/cake update` を流す必要は無い
+
+| 版上げの種類 | 気をつけること |
+|---|---|
+| 修正版（例 5.4.1 → 5.4.2） | 上の手順のまま。リリースノートの初期値・キャッシュの変更だけ見る |
+| 系をまたぐ（例 5.3 → 5.4） | リリースノートで、経由する版を確かめる（例: 5.4.2 のリリースノートでは「5.2 系は先に 5.2.10 に上げてから」）。プラグイン側の対応は `basercms-plugin-5x-update` |
+
+**例: 5.4.1 → 5.4.2 のとき**
+- `composer audit` で `symfony/http-foundation` 6.4.44 に脆弱性 → 6.4.50 に上げて0件に
+- メールフィールド管理のアクセスルールの初期値が「許可しない」に変わった（作り直すとその版の標準になる）
+- テーブル構造のキャッシュが有効になった（DB を入れ替えたらキャッシュを消す）
 
 ## 注意事項
 

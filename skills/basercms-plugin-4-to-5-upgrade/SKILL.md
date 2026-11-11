@@ -1,6 +1,6 @@
 ---
 name: basercms-plugin-4-to-5-upgrade
-description: 'baserCMS 4 (CakePHP 2ベース) のプラグイン内部コードを baserCMS 5 (CakePHP 5ベース) へ移行する際の、Controller/Table/Entity/View/Helper/フォーム/Vue・JS の具体的な書き換えパターン集。「プラグインを4から5へ移行」「admin_ メソッドを Controller/Admin へ」「public $belongsTo/$hasMany を initialize() へ」「ClassRegistry/TableRegistry」「find(all/first/list, 配列) をクエリビルダへ」「$this->Model（null）を fetchTable へ」「getControlSource の単数→複数形」「$this->Form を BcAdminForm・control() へ」「検索フォーム searches/→search/」「FormHelper::create 文字列モデル→null」「FormHelper::year()/month()/domId() 廃止」「Time::format の ICU パターン」「Number::format/Text::truncate の null 不可」「配列条件の IN 自動付与なし・null は IS」「Vue/JS の admin URL を $.bcUtil.adminBaseUrl へ＋webpack 再ビルド」「$this->data / $View->request がヘルパ誤ロードを誘発」「MissingTableClassException / MissingHelperException / No context provider found」「App::importでVendor同梱した外部ライブラリ(leafo/scssphp等)が5系に移植されておらず機能が死ぬ」「PHP8で削除されたeach()や正規表現の不正エスケープ等、古い同梱ライブラリのPHP8非互換」等、プラグインの画面・モデル・テンプレート・フロント表示のエラーを1つずつ潰す作業で参照する。本スキルは4系イディオムの検出と変換に絞り、5系での正しい書き方の正本は basercms5-plugin-development を参照する。サイト全体の4→5移行手順（インストール/DB移行/テーマ・プラグイン変換手順/Git運用）は basercms4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest、ブログ等へのカスタムフィールド後付け系プラグインを bc-custom-content へ移行する場合は basercms5-custom-content-development スキルを参照。'
+description: 'baserCMS 4 (CakePHP 2ベース) のプラグイン内部コードを baserCMS 5 (CakePHP 5ベース) へ移行する際の、Controller/Table/Entity/View/Helper/フォーム/Vue・JS の具体的な書き換えパターン集。「プラグインを4から5へ移行」「admin_ メソッドを Controller/Admin へ」「public $belongsTo/$hasMany を initialize() へ」「ClassRegistry/TableRegistry」「4系の var $name/$uses/$helpers が型宣言と衝突して Fatal」「beforeFilter のシグネチャ不一致」「custom など複数DB接続を default へ寄せる」「Config/Schema を持たないプラグインのテーブルはバックアップに入らない」「find(all/first/list, 配列) をクエリビルダへ」「$this->Model（null）を fetchTable へ」「getControlSource の単数→複数形」「$this->Form を BcAdminForm・control() へ」「検索フォーム searches/→search/」「FormHelper::create 文字列モデル→null」「FormHelper::year()/month()/domId() 廃止」「Time::format の ICU パターン」「Number::format/Text::truncate の null 不可」「配列条件の IN 自動付与なし・null は IS」「Vue/JS の admin URL を $.bcUtil.adminBaseUrl へ＋webpack 再ビルド」「$this->data / $View->request がヘルパ誤ロードを誘発」「MissingTableClassException / MissingHelperException / No context provider found」「App::importでVendor同梱した外部ライブラリ(leafo/scssphp等)が5系に移植されておらず機能が死ぬ」「PHP8で削除されたeach()や正規表現の不正エスケープ等、古い同梱ライブラリのPHP8非互換」等、プラグインの画面・モデル・テンプレート・フロント表示のエラーを1つずつ潰す作業で参照する。本スキルは4系イディオムの検出と変換に絞り、5系での正しい書き方の正本は basercms5-plugin-development を参照する。サイト全体の4→5移行手順（インストール/DB移行/テーマ・プラグイン変換手順/Git運用）は basercms4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest、ブログ等へのカスタムフィールド後付け系プラグインを bc-custom-content へ移行する場合は basercms5-custom-content-development スキルを参照。'
 license: MIT
 ---
 
@@ -63,6 +63,28 @@ license: MIT
 
 ### 3. 日付・時刻
 - `FrozenTime` → `Cake\I18n\DateTime` が推奨。ICU パターンと PHP `date()` 形式の使い分け・null 安全の正本は basercms5-plugin-development §7「日付・数値・文字列」を参照。
+
+#### ★4系 `pages.code`（固定ページ専用の style/script）は移行で消える
+- 4系の `pages` テーブルには本文 `contents` とは別に **`code` カラム**があり、管理画面の「コード」欄からそのページ専用の `<style>` / `<script>` / `<?php $this->BcBaser->css('page/xxx') ?>` を書けた。**5系の `pages` に該当カラムは無く、BcDbMigrator は警告も出さずに捨てる。**
+- 症状: 移行後、特定の固定ページだけレイアウトが崩れる（ボタンがただの箇条書きになる、画像が原寸で出る等）。**本文HTMLも読み込むCSSも本番と完全に同じなのに崩れる**ので原因を見失いやすい。**「本番のHTMLにインライン `<style>` があるのに移行後には無い」**が決め手。
+- 検出: 4系バックアップzipの `core/pages.csv` を開き、`code` 列が空でない行を数える。`SELECT id FROM <prefix>pages WHERE code <> ''` でもよい。**該当は数ページしかないことが多いので、全ページ目視ではなく必ずこの方法で洗う。**
+- 変換: 4系は `code` を**本文の直前**（`<div class="bge-contents">` の先頭）に出力していたので、**`contents` の先頭に連結すれば描画結果は同じ**になる。`<?php ... ?>` は5系の `contents` では実行されないので取り除き、**除去した PHP は必ず個別に評価する**（`css()` / `js()` の参照先が実在するか、`header('Location: ...')` のような副作用が無いか）。移行後にDBを作り直す前提なら、**手作業のSQLではなく「4系バックアップから SQL を生成するスクリプト」にしておく**（公開直前の再変換でも同じ結果になる）。
+
+#### ダッシュボードのウィジェットは ajax アクションではなく `Admin/element/Dashboard/*.php`
+- 4系: プラグインの `View/Elements/admin/dashboard/*.php` が自動収集され、中身は `$.bcDashboard.ajax('/admin/<plugin>/<controller>/ajax_xxx', '#Target')` で専用コントローラを叩いていた。
+- 5系: `DashboardAdminService::getPanels()` が **`plugins/<Plugin>/templates/Admin/element/Dashboard/*.php`**（`Dashboard` は大文字始まり）を収集し、`Admin/Dashboard/index.php` が**同期描画**する。ajax の往復は不要になるので、専用の ajax コントローラ／テンプレは削除してよい。
+- 集計は**ヘルパに持たせる**のが5系の流儀（正本: コアの `bc-admin-third/templates/plugin/BcMail/Admin/element/Dashboard/mail_messages.php` が `$this->loadHelper('BcMail.Mail')` している）。パネル側は `$this->loadHelper('<Plugin>.Xxx')` して呼ぶだけにする。
+
+#### `quoteIdentifiers = true` の環境では、生SQL文字列を `select()` に直接渡さない
+- 症状: `SQLSTATE[42S22] Unknown column 'created), '/', MONTH(created' in 'field list'` のように、**式がカンマで割れた形**でエラーになる。識別子クオート処理が式を列名として扱うため。
+- 該当しやすいのは4系からそのまま持ってきた集計クエリ（`CONCAT(YEAR(created), '/', MONTH(created))`、`CASE WHEN ...` など**カンマを含む式**）。`SUM(count)` のような単純な関数は通ってしまうので、**動く式と動かない式が混在して原因が見えにくい**。
+- 変換: `$query->newExpr("CONCAT(YEAR(created), '/', MONTH(created))")` で包み、`select()` / `groupBy()` に**同じ式オブジェクトを渡す**。`orderBy` も `$query->newExpr('MIN(created) DESC')`。
+- 併せて: 4系の `['col <>' => null]`（CakePHP2 は暗黙に `IS NOT NULL`）は、5系では `InvalidArgumentException: Expression 'col' has invalid 'null' value` になる → `['col IS NOT' => null]` に分岐する。
+
+#### datePicker は `datepicker()` 直呼びではなく `control(['type' => 'datePicker'])` にする
+- 検出: 日付欄だけ枠線やサイズが他の入力欄と違って見える（`bca-textbox` / `bca-textbox__input` が付いていない）。4系テンプレの `$this->BcForm->datepicker('open_date', array('size' => 12), true)` をそのまま `BcAdminForm->datepicker(...)` に置換しただけの箇所で起きる。
+- 原因: 管理画面のクラス付与は `BcAdminFormHelper::control()` の type 別分岐（`datePicker` → `bca-textbox__input` ＋ コンテナ `bca-textbox`）で行われる。ヘルパのメソッドを直接呼ぶとこの分岐を通らず、素の `<input type="text">` が出る。
+- 変換: `$this->BcAdminForm->control('open_date', ['type' => 'datePicker', 'size' => 12, 'maxlength' => 10])`。CakePHP の `FormHelper::control()` は未知の type を同名メソッドへ委譲するので、`BcFormHelper::datePicker()`（jQuery UI の初期化 script 付き）がそのまま呼ばれる。日時なら `'dateTimePicker'`（コアの `content_options.php` 等が使っている正本）。**`file` / `select` / `radio` / `checkbox` / `textarea` も同じ理屈**——4系の `$this->BcForm->○○()` 直呼びが残っていたら type 指定の `control()` へ寄せる。
 
 #### ★[最重要] datePicker の日付が保存されない（datetime カラムが NULL になる）
 - 検出: 日付系カラムが**保存しても消える（NULL）**。原因は2つの組合せ: ①4系 `BcFormHelper::datePicker` は**スラッシュ形式**（例 `2026/06/28`）で送る、②5系 `DateTimeType::marshal` は `Y-m-d H:i:s` を要求し、スラッシュ形式もハイフンの「日付のみ」も NULL にする。逆に純 `date` カラム（`DateType`）は「時刻付き」を NULL にする——**カラム型で要求が真逆**なので、移行先が date か datetime かを migration の `SHOW CREATE TABLE` で必ず確認する。
@@ -258,6 +280,7 @@ license: MIT
 `BcAddonMigrator` での変換や、その後の「配列の整理」作業で、`config/setting.php` の内容が**間引かれる**ことがある。2系統に注意し、必ず4系 `Config/setting.php` と照合して復元する:
 - **設定キーの欠落**: コードが参照するキー（例 `Sample.operatingDays`/`productTypes`/`practiceTypes`/`monthlyUnitPricePartner`/`mitsumoriKessai`）が無いと `Division by zero`・`array_merge(): Argument #2 must be of type array, null given`・未定義参照になる。**画面ごとに1つずつ潰さず、横断的に洗い出す**: 参照キー `grep -rohE "Configure::read\('Sample\.[a-zA-Z0-9_]+" templates/ src/ | sed "s/.*Sample\.//" | sort -u` と 定義キー `grep -oE "'[a-zA-Z0-9_]+'\s*=>" config/setting.php | …` を `comm -23` で突合し、未定義キーを4系 `Config/setting.php` から一括復元する。
 - **adminNavigation（管理メニュー）の欠落・改変**: メニュー項目が落ちる/直リンク化されると**4系と管理画面のメニュー構成（UI）が変わる**。例: 4系は「分析」メニュー（`sample_menus/analysis`、`currentRegex` で `sample_aggregate`/`sample_units` 等を内包）から集計へ遷移する仕様なのに、変換後 setting.php では「集計」が直リンク化され「分析」や他メニュー（経理/工数管理/マスター等）が消えている、等。**UI を勝手に変えない**方針なら、adminNavigation も4系と突き合わせて元の構成に戻す（メニューのURLは4系の小文字表記 `'controller' => 'sample_projects'` のままで baserCMS5 admin が解決する）。未移行画面へのリンクは押すとエラーになるが、画面移行を進めるにつれ解消する。
+- **★`currentRegex` は「5系の実URL」に合わせて書き直す＝プラグイン名はケバブケース**: 5系の管理画面URLは `BcPlugin::prefixRouting()` が `Inflector::dasherize()` するため `/baser/admin/baser-partner/works/edit/350` のようにプラグイン名だけがケバブになる（コントローラ名はスネークのまま）。4系の `'/\/baser_partner\/works\/[^\/]+?($|\/)/s'` をそのまま持ってくると**どこにもマッチせず、edit / add などの詳細画面でサイドメニューのカレント表示が消える**。`BcAdminHelper::convertAdminMenuGroups()` は「メニューURLとの完全一致」を先に全メニューへ試し、**1件も当たらなかった時だけ** `currentRegex` にフォールバックする仕様なので、**一覧（index）は完全一致で当たってしまい正常に見える**——検証は必ず詳細画面で行うこと。確認は `#AdminMenu` の JSON を取り出して `menus[].current` が true になっているかを見るのが確実。
 - **★4系 setting.php が「実行型」（ロード時に DB や他プラグインのクラスへアクセスして値を組み立てる）の場合、5系の `return 配列` へ単純変換できない**——検出: setting.php 内の `ClassRegistry`/モデル呼び出し/他プラグインの Util クラス参照。変換: **静的な設定は setting.php の return 配列、動的な組み立ては `<Plugin>Plugin::bootstrap()`（try/catch ガード付き）へ分離**する（正本: basercms5-plugin-development §1「新規開発の始め方」）。
 
 ### C-F. Vue/JS から叩く ajax は戻り値を Response にし、URL を5系管理パスへ
@@ -362,3 +385,43 @@ CakePHP2時代は composer が一般的でなく、外部ライブラリ（例: 
 
 ## テーマ（Theme）の移行パターン（別スキル）
 テーマ（templates/layout・element・Blog/Pages/Mail テンプレート）固有の移行パターン（TH-系）と、フロント表示エラーのうちテンプレート・テーマ描画系のパターン（F-1〜F-5, F-9, F-11〜F-17, F-19, F-20）は **basercms-theme-4-to-5-upgrade** スキルに分割した。テーマの作業ではそちらを参照すること。
+
+## C-P. 4系のコントローラ／ヘルパのプロパティは「消す」— 残すと型宣言の衝突で Fatal（実証済み）
+
+CakePHP 5 の親クラスは主要プロパティに**型宣言**を持つため、4系の `var $xxx` / `public $xxx` を残したままにすると **`php -l` は通るのにリクエスト時に Fatal Error** になる。しかも `ErrorHandlerMiddleware` が拾えず「HTTPステータスは200なのに本文がエラーページ」という紛らわしい形で出ることがあるので、**ステータスコードだけでの正常判定は危険**（`grep -c 'Fatal error'` も併せて見ること）。
+
+- 症状の例:
+  - `Type of <Plugin>\Controller\XxxController::$name must be string (as in class Cake\Controller\Controller)`
+  - `Type of <Plugin>\View\Helper\XxxHelper::$helpers must be array (as in class Cake\View\Helper)`
+- **対処: 下記は原則すべて削除する**（5系では別の仕組みに置き換わっており、宣言する意味が無い）。
+  `$name` / `$uses` / `$helpers` / `$components` / `$subMenuElements` / `$crumbs` / `$subContentsTitle` / `$pageTitle` / `$actsAs` / `$mainteTableName`
+  - `$uses` → コントローラでは `fetchTable('<Plugin>.<Tables>')`
+  - `$helpers` → `viewBuilder()->addHelper()`（ヘルパー内でどうしても必要なら `protected array $helpers = [...]` と**型付きで**宣言し、参照名も `BaserCore.BcBaser` のようにプラグイン修飾する）
+  - `$actsAs` → Table の `initialize()` で `addBehavior()`
+- 一括除去は、docコメント付きの宣言ごと消すと差分がきれいになる:
+  ```
+  ^[ \t]*(?:/\*\*(?:[^*]|\*(?!/))*\*/[ \t]*\n)?[ \t]*(?:var|public|protected)[ \t]+\$(name|uses|helpers|components|subMenuElements|crumbs|subContentsTitle|pageTitle|actsAs|mainteTableName)\b[^;]*;[ \t]*\n
+  ```
+
+### C-P2. `beforeFilter()` のシグネチャ不一致も同じ形で Fatal になる
+- `Declaration of <Plugin>\Controller\XxxController::beforeFilter() must be compatible with BaserCore\Controller\BcFrontAppController::beforeFilter(Cake\Event\EventInterface $event)`
+- `function beforeFilter()` → `public function beforeFilter(\Cake\Event\EventInterface $event)`。`BcAddonMigrator` は `parent::beforeFilter($event);` という**引数だけ5系化された壊れた呼び出し**を残すことがある（`$event` が未定義になる）ので、シグネチャとセットで直す。
+- 中の `$this->BcAuth->allow(...)` は5系に `BcAuth` コンポーネントが無いので削除してよい（フロントの公開ページは既定で認証不要）。
+
+## C-Q. `custom` など複数DB接続は「同一DB・prefix違い」なら default に寄せる（実証済み）
+
+4系で `$useDbConfig = 'custom'` を使っていても、`database.php` を読むと **DB名・ホスト・ユーザーは同じで prefix だけ違う**、というだけのことが多い。この場合5系で接続を分ける実利はゼロで、むしろ分けると baserCMS のバックアップ／復元系（`BcDatabaseService::getAppTableList()` は1接続しか列挙しない）から外れて不利になる。
+
+- **対処**: default 接続に寄せ、**テーブル名側にプレフィックスの差分を持たせる**。
+  `Datasources.default.prefix = 'mysite_'` のまま `$this->setTable('ct_works')` とすれば物理名 `mysite_ct_works` に一致する。モデルの `var $useDbConfig` は削除。
+- **バックアップ zip には入る**: `custom` が同一DBなら `listSources()` が拾うため、4系のバックアップにも `CtWorksSchema.php` / `ct_works.csv` が含まれ、BcDbMigrator を素通りして default 接続へ復元される。事前に `unzip -l <backup>.zip | grep -i ct_` で確認しておく。
+- **Migrations のファイル名規約に注意**: `BcDatabaseService::getAppTableList()` は `config/Migrations/*_Create<Name>.php` というファイル名から `Inflector::tableize()` でテーブル名を逆算する。`<ts>_CreateCtWorks.php` のように**実テーブル名に一致させる**と、移行後の v5 バックアップにも独自テーブルが含まれるようになる。
+- **belongsToMany は `through` で中間テーブルを明示する**。省略すると結合テーブルのエイリアスが**プレフィックス込み**（例 `MysiteCtCompaniesWorks`）になり、`'sort' => ['CtCompaniesWorks.sort' => 'ASC']` が `Unknown column 'CtCompaniesWorks.sort' in 'order clause'` で解決できない。
+
+## C-R. `Config/Schema` を持たないプラグインのテーブルは4系バックアップに入らない（実証済み）
+
+4系のバックアップ（`ToolsController::_writeBackup()`）は、**`Config/Schema/<table>.php` があるテーブルだけ**を対象にする。モデルクラスすら持たず CakePHP2 の自動 AppModel に頼っていたプラグインは Schema も無いため、**そのプラグインのテーブルはバックアップ zip に一切含まれない**（気付かないと移行後に「データが消えた」ことになる）。
+
+- 事前確認: `ls app/Plugin/*/Config/Schema` で Schema を持たないプラグインを洗い出し、そのテーブルを `unzip -l <backup>.zip` に無いことと突き合わせる。
+- **対処**: 対象テーブルだけ `mysqldump` で別途取得し、5系側で Migrations を流してテーブルを作った**後**に `--no-create-info` の INSERT を流す。
+- 併せて、そういうプラグインは5系で **Table クラスを新規に書き起こす**必要がある（4系に無かったので変換元が存在しない）。

@@ -18,7 +18,8 @@
  *   php rebuild_permissions.php   （baserCMS のルートで流す）
  *
  * - 管理画面の「アクセスルールグループ」の再構築と同じ処理（rebuildByUserGroup）。何度流しても同じ結果
- * - permission.php を持たないプラグインはフルアクセスになるので、使わせないものは拒否にする（DENY_PLUGINS）
+ * - permission.php を持たないプラグインは、5.4.1 までは作り直すとフルアクセスになるので、使わせないものは拒否にする（DENY_PLUGINS）。
+ *   5.4.2 からはルールが作られない（管理者だけ）ので、使わせるものにフルアクセスを作る（ALLOW_PLUGINS）
  * - 最後に PermissionsService::check() で EXPECT の URL を確かめ、違えば終了コード 1
  */
 use BaserCore\Service\PermissionGroupsServiceInterface;
@@ -29,6 +30,8 @@ use Cake\ORM\TableRegistry;
 const OPERATORS = 2; // 作り直すユーザーグループの ID（例 operators）
 // permission.php を持たず「フルアクセス」になるプラグインのうち、運営者には使わせないもの
 const DENY_PLUGINS = ['BcDbMigrator', 'BcAddonMigrator', 'BcMcp']; // サイトに合わせて足す（静的書き出しのプラグインなど）
+// permission.php を持たないプラグインのうち、運営者に使わせるもの（5.4.2 から。フルアクセスを作る）
+const ALLOW_PLUGINS = []; // 例 ['CuApprover', 'CuCustomField', '<独自プラグイン>']
 
 // [URL, 期待（true=見られる）]
 const EXPECT = [
@@ -64,6 +67,9 @@ $container = $app->getContainer();
 
 $groups = $container->get(PermissionGroupsServiceInterface::class);
 $groups->rebuildByUserGroup(OPERATORS);
+foreach (ALLOW_PLUGINS as $plugin) {
+    $groups->build(OPERATORS, $plugin, true); // 第3引数 true で、permission.php が無ければフルアクセスを作る
+}
 
 $permissionGroups = TableRegistry::getTableLocator()->get('BaserCore.PermissionGroups');
 $permissions = TableRegistry::getTableLocator()->get('BaserCore.Permissions');

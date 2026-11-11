@@ -449,9 +449,12 @@ v5 標準 `.gitignore` は `/webroot/files/*` を無視する（正しい既定�
 - **BcDbMigrator は URL を一部しか直さない。** `/admin/users/edit*` などは5系の URL になるが、`/admin/permissions*`・`/admin/site_configs*`・`/admin/plugins*`・`/admin/users*` や独自プラグインの `/admin/<plugin_snake>/*` は4系のまま残り、5系ではどこにも当たらない。アクセスルールグループも1つしかできない
 - **4系のルールを写さず、5系の標準で作り直すのを標準とする**（公開後も5系で運用するため）。スクリプトの雛形は [`references/permissions-after-migration.md`](references/permissions-after-migration.md) の 1。`permissionType` を 2 にして4系の動きに合わせる案は、設定ファイルと DB に分かれ、5系の画面・説明と動きが食い違い、後から入れたプラグインの管理画面が開いてしまうので採らない
   1. 復元の後に `PermissionGroupsService::rebuildByUserGroup(<グループID>)` を流す（管理画面の「アクセスルールグループ」の再構築と同じ処理。各プラグインの `config/permission.php` の標準が入る）。CLI 用のコマンドは無いので、`App\Application` を `bootstrap()`・`pluginBootstrap()` し、`BcContainer::set($app->getContainer())` してからサービスを呼ぶ小さなスクリプトにする
-  2. **`config/permission.php` を持たないプラグインは「フルアクセス」になる**（独自プラグイン・移行ツール・BcMcp など）。管理者以外に使わせないもの（BcDbMigrator・BcAddonMigrator・BcMcp・静的書き出しなど）は、そのプラグインのアクセスルールグループで、そのグループのルールを `auth = 0` にする
+  2. **`config/permission.php` を持たないプラグイン（独自プラグイン・第三者プラグイン・移行ツールなど）の扱いは、コアの版で違う。**
+     - **5.4.1 まで**: 作り直すと「フルアクセス」になる。管理者以外に使わせないもの（BcDbMigrator・BcAddonMigrator・BcMcp・静的書き出しなど）は、そのプラグインのアクセスルールグループのルールを `auth = 0` にする
+     - **5.4.2 から**: 作り直してもルールが1件も作られない（管理者だけが使える。`PermissionGroupsService::build()` の `$allowAllWithoutDefinition` の既定が `false`）。管理者以外に使わせるプラグインだけ、`build(<グループID>, '<プラグイン名>', true)` でフルアクセスを作る。5.4.1 のつもりの「拒否にする」だけのスクリプトのままだと、独自プラグインの管理画面が開けなくなる（判定の確認で気付ける）
   3. **5系の判定処理で確かめる。** `PermissionsService::check($url, [<グループID>])` に、見られるはずの URL と見られないはずの URL を渡す。**CLI ではルーティングを読み込まないと URL の解析に失敗し、判定がすべて「許可」になる**（`$app->routes(Router::createRouteBuilder('/'))` と `$app->pluginRoutes()` を先に呼ぶ）
-- お気に入り（bc-favorite）は管理画面のページが無く、管理用 API（`/baser/api/admin/bc-favorite/favorites/*.json`）だけで動く
+- お気に入り（bc-favorite）は管理画面のページが無く、管理用 API（`/baser/api/admin/bc-favorite/favorites/*.json`）だけで動く。4系の「よく使う項目」（`/admin/favorites/*`）の許可を URL だけ5系にしても API には当たらず、**お気に入りのデータは移っているのに一覧が空**になる（データが移っていないように見える）
+- 4系でも、先頭に `/admin/*` の拒否を置き、使う画面だけ許可する作り（許可リスト型）のサイトがある。この場合も、BcDbMigrator はコアの画面の URL しか直さず、プラグインの画面（`/admin/<plugin_snake>/*`）の許可は4系の URL のまま効かない。作り直したうえで、4系で許可していたプラグインに 2 のフルアクセスを作る。4系で丸ごと許可していたコアの機能（例 `/admin/mail/*`）は、5系の標準で拒否になっているルール（メールフィールド管理など）を許可に変えると4系と同じになる
 - 仕上げは、そのグループの実際のアカウントで管理画面のメニューと各画面を開く（管理画面の巡回は admins で行うので、権限の確認にはならない）
 - コアの版によって `permission.php` の初期値が変わることがある（例 5.4.2 でメールフィールド管理が「許可しない」に）。作り直した結果はその版の標準になる
 

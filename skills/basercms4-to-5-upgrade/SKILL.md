@@ -1,6 +1,6 @@
 ---
 name: basercms4-to-5-upgrade
-description: 'baserCMS 4 (CakePHP 2ベース) のコード・サイトを baserCMS 5 (CakePHP 5ベース) へアップグレード／移行する際に AIエージェントが遵守すべきルールとパターン集。「baserCMS 4 から 5 へ移行」「4系を5系にアップグレード」「BcDbMigrator でデータ移行」「BcAddonMigrator でテーマ／プラグイン変換」「CakePHP 2 → CakePHP 5 への書き換え」「admin_ プレフィックスメソッドの Controller/Admin への移動」「config/setting.php・config.php の return 配列化」「init.php 廃止と PluginClass 作成」「migration_snapshot 生成」「site_configs theme → sites theme」「移行の標準フロー／工程の順序」「プラグインを DB で直接有効化」「テーマを DB で直接適用」「request->data／query／params の getter 化」「File/Folder クラス廃止」「ClassRegistry → TableRegistry」「FrozenTime → DateTime」「FixtureManager → FixtureFactory」等、4→5 アップグレード作業全般で参照する。プラグイン内部コード（Controller/Table/Entity/View/Helper/フォーム/Vue・JS）の具体的な書き換えパターンは basercms-plugin-4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest スキルを参照。移行先である5系での正しい書き方（開発の正本）は basercms5-plugin-development / basercms5-theme-development を参照。'
+description: 'baserCMS 4 (CakePHP 2ベース) のコード・サイトを baserCMS 5 (CakePHP 5ベース) へアップグレード／移行する際に AIエージェントが遵守すべきルールとパターン集。「baserCMS 4 から 5 へ移行」「4系を5系にアップグレード」「BcDbMigrator でデータ移行」「移行後に運営者のメニューや権限が4系と違う（コンテンツ管理が出ない）」「管理者以外だと管理画面が極端に遅い」「公開前に別のホスト名で新旧を見比べたい（SITE_URL）」「移行後にコアを版上げする（修正版・系をまたぐとき）」「BcAddonMigrator でテーマ／プラグイン変換」「CakePHP 2 → CakePHP 5 への書き換え」「admin_ プレフィックスメソッドの Controller/Admin への移動」「config/setting.php・config.php の return 配列化」「init.php 廃止と PluginClass 作成」「migration_snapshot 生成」「site_configs theme → sites theme」「移行の標準フロー／工程の順序」「プラグインを DB で直接有効化」「テーマを DB で直接適用」「request->data／query／params の getter 化」「File/Folder クラス廃止」「ClassRegistry → TableRegistry」「FrozenTime → DateTime」「FixtureManager → FixtureFactory」等、4→5 アップグレード作業全般で参照する。プラグイン内部コード（Controller/Table/Entity/View/Helper/フォーム/Vue・JS）の具体的な書き換えパターンは basercms-plugin-4-to-5-upgrade、テーマ（templates 中心）の移行は basercms-theme-4-to-5-upgrade、5.2→5.3 のプラグイン移行は basercms-plugin-5x-update、CakePHP本体起因は cakephp-migration、PHP本体起因は php-migration、テスト実行は basercms-unittest スキルを参照。移行先である5系での正しい書き方（開発の正本）は basercms5-plugin-development / basercms5-theme-development を参照。'
 license: MIT
 ---
 
@@ -128,6 +128,8 @@ bin/cake install [設置URL（例：https://localhost/v5/）] [管理者メー�
 `.htaccess` の RewriteBase は**多くの場合そのままで動く**（5系既定の `.htaccess` は相対リライトのため、`/v5/` サブディレクトリでも無調整で通ることが多い＝実証済み）。**`/v5/v5` 二重化(404) やリダイレクトループが出た場合にのみ** `webroot/.htaccess` の `RewriteBase` を調整する（まずは下記 SITE_URL とキャッシュ残りを疑う）。
 
 ログインURLは、`https://localhost/v5/baser/admin/baser-core/users/login` のような形となります。
+
+- **[公開前に別のホスト名で新旧を見比べるなら、`SITE_URL` もそのホスト名にする]** 管理画面は `config/.env` の `SITE_URL` のホストへ強制的に転送される。新サーバを `dev.example.com` のような確認用のホスト名で見る間に `SITE_URL` を本番のホスト名（`https://example.com/`）にしておくと、確認用のホスト名でログインしようとしても**本番（旧サーバ）へ飛ばされる**。公開前は `SITE_URL` を確認用のホスト名にし、公開の作業で本番のホスト名へ戻して `bin/cake cache clear_all`（確認用のホスト名は本番への 301 にしてから片付ける）。`/etc/hosts` で本番のホスト名を新サーバへ向けるやり方は、同じ URL で新旧を同時に開けないので見比べに向かない
 
 - **[重要・サブディレクトリ設置時の SITE_URL はサブディレクトリ込みにする＋変更後は必ずキャッシュ全消去]** サブディレクトリ設置では `config/.env` の `SITE_URL` は**サブディレクトリを含むフルURL**（例 `https://localhost/v5/`）が**正しい**。ここを**ドメインルート（`https://localhost/`）に変えてはいけない**——一見 `/v5/v5` 二重化が消えるように見えるが、代わりに**管理ログインが自分自身へ 302 する無限ループ**になる（loginUrl とリクエストパスが食い違い、ログインページが「保護対象」と誤判定されるため）。
   - **管理画面が `/v5/v5` 二重化(404) や リダイレクトループになったときの真因は、多くが「`.env`（特に SITE_URL）を変更した後のキャッシュ残り」**。baserCMS はルート/URLをキャッシュするため、`.env` を変えたら必ず **`bin/cake cache clear_all`** を実行する。SITE_URL を正しい `https://host/v5/` に戻し、キャッシュを消せば解消する（実証済み）。
@@ -423,6 +425,68 @@ v5 標準 `.gitignore` は `/webroot/files/*` を無視する（正しい既定�
 
 ### G-4. v5 のネスト/取り込み
 `git add v5` 時、ネストした `v5/.gitignore` は親リポジトリでもそのまま効く（秘匿 `config/.env`・`app_local.php`・`vendor`・`tmp`・`logs` は自動除外される）。`git add -n`（dry-run）でステージ予定を必ず検証してからコミットする。プラグインを将来「再利用可能な独立リポジトリ」にしたい場合も、まずは親に通常ファイルで取り込み、安定後に `git subtree split` で切り出す段階移行が扱いやすい。
+
+## 移行後のユーザーグループのアクセスルール（運営者など）
+
+**4系と5系で、ルールに当てはまらない画面の扱いが逆。** 4系の `Permission::check()` は既定で許可し、拒否のルールに当てはまったものだけ見られない。5系は管理画面・管理用 API とも `BcPrefixAuth.<prefix>.permissionType = 1`（許可したものだけ見られる）。4系のルールは拒否中心なので、BcDbMigrator でそのまま移すと、管理者以外（運営者など）は**コンテンツ管理・アップロード・独自プラグインの管理画面などが開けなくなる**（ダッシュボードとお問い合わせ程度しか出ない）。
+
+- **BcDbMigrator は URL を一部しか直さない。** `/admin/users/edit*` などは5系の URL になるが、`/admin/permissions*`・`/admin/site_configs*`・`/admin/plugins*`・`/admin/users*` や独自プラグインの `/admin/<plugin_snake>/*` は4系のまま残り、5系ではどこにも当たらない。アクセスルールグループも1つしかできない
+- **4系のルールを写さず、5系の標準で作り直すのを標準とする**（公開後も5系で運用するため）。スクリプトの雛形は [`references/permissions-after-migration.md`](references/permissions-after-migration.md) の 1。`permissionType` を 2 にして4系の動きに合わせる案は、設定ファイルと DB に分かれ、5系の画面・説明と動きが食い違い、後から入れたプラグインの管理画面が開いてしまうので採らない
+  1. 復元の後に `PermissionGroupsService::rebuildByUserGroup(<グループID>)` を流す（管理画面の「アクセスルールグループ」の再構築と同じ処理。各プラグインの `config/permission.php` の標準が入る）。CLI 用のコマンドは無いので、`App\Application` を `bootstrap()`・`pluginBootstrap()` し、`BcContainer::set($app->getContainer())` してからサービスを呼ぶ小さなスクリプトにする
+  2. **`config/permission.php` を持たないプラグインは「フルアクセス」になる**（独自プラグイン・移行ツール・BcMcp など）。管理者以外に使わせないもの（BcDbMigrator・BcAddonMigrator・BcMcp・静的書き出しなど）は、そのプラグインのアクセスルールグループで、そのグループのルールを `auth = 0` にする
+  3. **5系の判定処理で確かめる。** `PermissionsService::check($url, [<グループID>])` に、見られるはずの URL と見られないはずの URL を渡す。**CLI ではルーティングを読み込まないと URL の解析に失敗し、判定がすべて「許可」になる**（`$app->routes(Router::createRouteBuilder('/'))` と `$app->pluginRoutes()` を先に呼ぶ）
+- お気に入り（bc-favorite）は管理画面のページが無く、管理用 API（`/baser/api/admin/bc-favorite/favorites/*.json`）だけで動く
+- 仕上げは、そのグループの実際のアカウントで管理画面のメニューと各画面を開く（管理画面の巡回は admins で行うので、権限の確認にはならない）
+- コアの版によって `permission.php` の初期値が変わることがある（例 5.4.2 でメールフィールド管理が「許可しない」に）。作り直した結果はその版の標準になる
+
+## 移行後の性能: 管理者以外で管理画面が極端に遅い
+
+**症状**: 管理者だと速いのに、運営者などで管理画面（特に記事が多いブログの記事一覧）が数秒〜数十秒かかる。開発者ツールではページ本体の「受信」が長い（サーバがページを作りながら送っている）。DB が遅いサーバほどひどい。
+
+**原因**（5.4.2 時点のコア `PermissionsService::check()`）: 管理者は判定の最初で全許可として抜けるが、それ以外は画面のメニュー・一覧の各行のボタンごとに判定が走り、判定のたびに次をやり直す。
+- **公開側の URL の解析**（一覧の各行の公開ページへのリンク、`javascript:void(0)` など）: `Router::parseRequest()` が URL に当たるコンテンツを DB から大量に探す。公開側の認証は無効（`BcPrefixAuth.Front.disabled`）なので結果は必ず許可なのに、行の数だけ問い合わせが増える
+- ルールの URL を判定のたびに正規表現へ組み立て直す（ルール数百件 × 判定の回数）
+- 判定のたびにユーザーグループをユーザー全員ごと DB から読む（`UserGroupsService::get()` の `contain: ['Users']`）
+
+**進め方**（雛形と確かめ方は [`references/permissions-after-migration.md`](references/permissions-after-migration.md) の 2）
+1. 使っている版のコアで直っているか確かめる（直っていれば何もしない）
+2. 直っていなければ、`PermissionsService` を継承したクラスをサイトのプラグインに置き、プラグインの `services()` で `$container->extend(PermissionsServiceInterface::class)->setConcrete(...)` と差し替える（コアは触らない）
+   - 公開側の URL（管理画面・管理 API 以外）は、公開側の認証が無効なら解析せずに許可を返す（`addCheck()` で足された拒否は守る）
+   - 組み立てた正規表現・判定の結果・判定の中で読むユーザーグループを、1回のリクエストの間だけ static に控える（ユーザーグループは `getService()` を上書きし、`UserGroupsServiceInterface` のときだけ控える包みを返す。サービスそのものは差し替えない）
+   - アクセスルールを書き換えるメソッド（`create`・`update`・`delete`・`copy`・`publish`・`unpublish`・`batch`・`addCheck`）では控えを捨てる
+3. 判定の結果が元と1件も違わないこと、遅かった画面が速くなったことを確かめる
+4. コアに同じ改善が入った版に上げたら、差し替えを外す
+
+**例**: 記事50件の一覧で、1回の表示に約11,500回の問い合わせ（手元 7.3 秒、DB の遅いサーバで 36 秒）→ 差し替えて 0.36 秒（同 0.54 秒）。判定の結果は元と1件も違わなかった。
+
+## 移行後にコアを上げる（5系の版上げ）
+
+移行した後も、baserCMS のコアは版上げ（セキュリティの修正版など）が続く。どの版に上げるときも、手順は同じ。
+
+```bash
+composer update "baserproject/*" --with-dependencies
+bin/cake update
+bin/cake cache clear_all
+composer audit
+```
+
+- 先に DB を控える。`composer.json` の `baserproject/baser-core` を `<新しい版>` に直してから流す
+- **先にリリースノートを読む**（`gh release view <新しい版> -R baserproject/basercms`）。見ておくもの:
+  - 上げ方の注意（系をまたぐときに、経由する版があるか）
+  - アクセスルールなどの初期値の変更（移行の作業で作り直すものに効く）
+  - キャッシュの仕組みの変更（DB を入れ替えたら、キャッシュを消す必要があるか）
+- **`composer audit` で依存の依存に脆弱性が出たら、そのパッケージだけ上げる**（`composer update <パッケージ名>`）
+- 配布先へは、手元で上げた DB を丸ごと入れるなら、配布先で `bin/cake update` を流す必要は無い
+
+| 版上げの種類 | 気をつけること |
+|---|---|
+| 修正版（例 5.4.1 → 5.4.2） | 上の手順のまま。リリースノートの初期値・キャッシュの変更だけ見る |
+| 系をまたぐ（例 5.3 → 5.4） | リリースノートで、経由する版を確かめる（例: 5.4.2 のリリースノートでは「5.2 系は先に 5.2.10 に上げてから」）。プラグイン側の対応は `basercms-plugin-5x-update` |
+
+**例: 5.4.1 → 5.4.2 のとき**
+- `composer audit` で `symfony/http-foundation` 6.4.44 に脆弱性 → 6.4.50 に上げて0件に
+- メールフィールド管理のアクセスルールの初期値が「許可しない」に変わった（作り直すとその版の標準になる）
+- テーブル構造のキャッシュが有効になった（DB を入れ替えたらキャッシュを消す）
 
 ## 注意事項
 

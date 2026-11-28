@@ -83,14 +83,7 @@ https://basercms.net/packages/download_exec/basercms-x.x.x.zip
 
 取得したコードは、プロジェクト内に、`v5` というフォルダを作成し、そこに配置してください。
 
-**取得方法（ホストの `curl`/`wget` が deny されている場合の回避）**: `download_exec` URL はブラウザ用の生成ダウンロードだが、`WebFetch` は「ページを Markdown 化して要約する」ツールのため zip 等バイナリを保存できない。ホストの `curl`/`wget` がパーミッションで deny されていることも多い。その場合、**Docker を使っているなら「コンテナ経由」で取得できる**（`Bash(docker:*)` が許可されていれば、`docker exec ... curl` は `Bash(curl:*)` の deny に掛からない）。プロジェクトはコンテナにマウントされているので、コンテナ内で落とせばホスト側にも実体が出る。最新安定版のバージョンは GitHub Releases（`baserproject/basercms` の latest）で確認する。
-```bash
-# 例: コンテナ内でパッケージを取得（マウント先 /var/www/html にプロジェクトがある想定）
-docker exec -w /var/www/html <container> bash -lc \
-  'curl -fL -A "Mozilla/5.0" -o basercms-<x.x.x>.zip "https://basercms.net/packages/download_exec/basercms-<x.x.x>.zip"'
-# 取得後: file / unzip -l で zip 妥当性を確認 → unzip -q -o basercms-<x.x.x>.zip -d v5/
-```
-コンテナ取得が難しい場合のみ、ユーザーにブラウザDLを依頼してパスをもらう。
+**取得方法**: パッケージは公式サイト（https://basercms.net/ ）のダウンロードページから、ユーザーにブラウザでダウンロードしてもらい、zip の置き場所を教えてもらう。最新安定版のバージョンは GitHub Releases（`baserproject/basercms` の latest）で確認する。zip を受け取ったら `unzip -l` で中身を確かめてから `v5/` に展開する。
 
 ## composer でパッケージのインストール
 
@@ -186,7 +179,7 @@ bin/cake install [設置URL（例：https://localhost/v5/）] [管理者メー�
 - **v4 並行稼働中は「移動」でなく「コピー」にする**（v4 側の表示を壊さない）。数GBあるためコンテナ内で `cp -a` するのが速い。
 - **★ネスト罠: `v5/webroot/files` は復元やプラグイン有効化の時点で既に一部生成されている**（`theme_configs/` `uploads/` やブログのディレクトリ骨格など）。そのため `cp -a /path/files /v5/webroot/files` とすると **`files/files/` にネストしてコピーされる**。既存ディレクトリへのマージは `cp -a /path/files/. /v5/webroot/files/`（末尾 `/.`）で中身をコピーする。ネストしてしまったら `cp -a .../files/files/. .../files/ && find .../files/files -delete` で解消。
 - **未移行時の症状**: アイキャッチ等のアップロード系URLは、実体ファイルが無いとヘルパのフォールバックで**ルート相対 `/files/...`（サブディレクトリ無し）**が出力され、v5 ページから v4 の files を誤参照する（v5 の `error.log` に `MissingRouteException: /files/...` が並ぶ）。files 移行後は `/v5/files/...` が正しく生成される。**この工程は「プラグイン有効化→描画確認」より前に済ませる**こと。
-- **移行後の検証**: 描画HTMLの `src` を `curl | grep -o 'src="[^"]*files[^"]*"'` で抜き、静的配信の 200 を確認する。ローカル環境では **DB は最新なのに files が古い**（本番から持ってきた時期のズレ）ことがあり、その 404 は移行起因ではない — v4 側の同パスにも実体が無いことで切り分ける。
+- **移行後の検証**: 描画 HTML から `files` 配下を指す `src` を抜き出し、静的配信の 200 を確認する。ローカル環境では **DB は最新なのに files が古い**（本番から持ってきた時期のズレ）ことがあり、その 404 は移行起因ではない — v4 側の同パスにも実体が無いことで切り分ける。
 
 ## テーマの変換
 

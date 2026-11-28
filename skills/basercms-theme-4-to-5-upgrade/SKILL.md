@@ -50,7 +50,7 @@ license: MIT
 
 ## フロント表示エラーの実例パターン（症状 → 原因 → 修正）
 
-> テーマ／プラグインのフロント表示を復旧させる際に頻出する実例。`BcAddonMigrator` で自動変換した後も残る典型的な不具合。**エラーメッセージで検索して該当パターンに当てる**こと。1つ直すと次のエラーが現れる「玉ねぎ剝き」になるため、`curl -sk -o /dev/null -w "%{http_code}" <URL>` でステータスを見ながら1件ずつ潰す。
+> テーマ／プラグインのフロント表示を復旧させる際に頻出する実例。`BcAddonMigrator` で自動変換した後も残る典型的な不具合。**エラーメッセージで検索して該当パターンに当てる**こと。1つ直すと次のエラーが現れる「玉ねぎ剝き」になるため、対象 URL の HTTP ステータスを見ながら1件ずつ潰す。
 
 ### F-1. `MissingTableClassException: Table class for alias 'Content' could not be found.`
 - 検出: 4系流の `TableRegistry::getTableLocator()->get('Content')`（単数形・プラグイン接頭辞なし）。
